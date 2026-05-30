@@ -1,0 +1,802 @@
+import AmpTemplate from "../models/AmpTemplate.js";
+import SavedBlock from "../models/SavedBlock.js";
+import TemplateVersion from "../models/TemplateVersion.js";
+import {
+  extractTemplateVariables,
+  renderTemplateExpressions
+} from "../utils/generateAmpTemplate.js";
+import {
+  builderBlockCatalog,
+  builderEditorConfig,
+  compileTemplateSource,
+  starterTemplateSource
+} from "../utils/templateCompiler.js";
+import { validateTemplate } from "../utils/templateValidator.js";
+
+const createSlug = (name) => {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+};
+
+const snapshotTemplate = async (template, summary) => {
+  if (!template) {
+    return null;
+  }
+
+  return TemplateVersion.findOneAndUpdate(
+    {
+      templateId: template._id,
+      version: template.version
+    },
+    {
+      templateId: template._id,
+      version: template.version,
+      name: template.name,
+      subject: template.subject,
+      status: template.status,
+      sourceJson: template.sourceJson,
+      html: template.html,
+      amp: template.amp,
+      formHtml: template.formHtml,
+      text: template.text,
+      variables: template.variables,
+      summary
+    },
+    {
+      upsert: true,
+      returnDocument: "after",
+      setDefaultsOnInsert: true
+    }
+  );
+};
+
+const getValidationPayload = ({
+  subject,
+  html,
+  amp,
+  formHtml,
+  variables,
+  sourceJson,
+  providedVariables
+}) => validateTemplate({
+  subject: subject || sourceJson?.subject,
+  html,
+  amp,
+  formHtml,
+  variables,
+  sourceJson,
+  providedVariables
+});
+
+export const createTemplate = async (req, res) => {
+  try {
+    const {
+      name,
+      slug,
+      subject,
+      sourceJson,
+      html,
+      amp,
+      formHtml,
+      text,
+      isActive,
+      status = "draft"
+    } = req.body;
+
+    if (!name || (!html && !sourceJson)) {
+      return res.status(400).json({
+        success: false,
+        message: "Template name and html or sourceJson are required"
+      });
+    }
+
+    const compiled = sourceJson
+      ? compileTemplateSource({
+          ...sourceJson,
+          name,
+          subject: subject || sourceJson.subject
+        })
+      : null;
+    const validation = getValidationPayload({
+      subject: subject || sourceJson?.subject,
+      html: compiled?.html || html,
+      amp: compiled?.amp || amp,
+      formHtml: compiled?.formHtml || formHtml,
+      variables: compiled?.variables || extractTemplateVariables(html, amp, formHtml, subject),
+      sourceJson
+    });
+
+    if (status === "published" && !validation.valid) {
+      return res.status(422).json({
+        success: false,
+        message: "Template validation failed",
+        validation
+      });
+    }
+
+    const template = await AmpTemplate.create({
+      name,
+      slug: slug || createSlug(name),
+      subject: subject || sourceJson?.subject,
+      sourceJson: sourceJson || null,
+      html: compiled?.html || html,
+      amp: compiled?.amp || amp,
+      formHtml: compiled?.formHtml || formHtml,
+      text: compiled?.text || text,
+      status,
+      isActive,
+      auditHistory: [
+        {
+          action: "created",
+          summary: sourceJson ? "Created from builder source" : "Created from raw markup"
+        }
+      ],
+      variables: compiled?.variables || extractTemplateVariables(html, amp, formHtml, subject)
+    });
+
+    await snapshotTemplate(template, "Initial template version");
+
+    return res.status(201).json({
+      success: true,
+      message: "Template saved",
+      template,
+      validation
+    });
+  } catch (err) {
+    if (err.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "Template slug already exists"
+      });
+    }
+
+    console.error("CREATE TEMPLATE ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Template save failed"
+    });
+  }
+};
+
+export const listTemplates = async (req, res) => {
+  try {
+    const query = {};
+
+    if (req.query.search) {
+      query.$or = [
+        { name: new RegExp(req.query.search, "i") },
+        { slug: new RegExp(req.query.search, "i") },
+        { subject: new RegExp(req.query.search, "i") }
+      ];
+    }
+
+    if (req.query.status) {
+      query.status = req.query.status;
+    }
+
+    const templates = await AmpTemplate
+      .find(query)
+      .select("-html -amp -formHtml")
+      .sort({ createdAt: -1 });
+
+    return res.json({
+      success: true,
+      templates
+    });
+  } catch (err) {
+    console.error("LIST TEMPLATE ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Template list failed"
+    });
+  }
+};
+
+export const getTemplate = async (req, res) => {
+  try {
+    const template = await AmpTemplate.findById(req.params.id);
+
+    if (!template) {
+      return res.status(404).json({
+        success: false,
+        message: "Template not found"
+      });
+    }
+
+    return res.json({
+      success: true,
+      template
+    });
+  } catch (err) {
+    console.error("GET TEMPLATE ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Template fetch failed"
+    });
+  }
+};
+
+export const updateTemplate = async (req, res) => {
+  try {
+    const existingTemplate = await AmpTemplate.findById(req.params.id);
+
+    if (!existingTemplate) {
+      return res.status(404).json({
+        success: false,
+        message: "Template not found"
+      });
+    }
+
+    const update = { ...req.body };
+
+    if (update.sourceJson) {
+      const compiled = compileTemplateSource({
+        ...update.sourceJson,
+        name: update.name || update.sourceJson.name,
+        subject: update.subject || update.sourceJson.subject
+      });
+
+      update.html = compiled.html;
+      update.amp = compiled.amp;
+      update.formHtml = compiled.formHtml;
+      update.text = compiled.text;
+      update.variables = compiled.variables;
+    } else if (update.html || update.amp || update.formHtml || update.subject) {
+      update.variables = extractTemplateVariables(
+        update.html,
+        update.amp,
+        update.formHtml,
+        update.subject
+      );
+    }
+    const validation = getValidationPayload({
+      subject: update.subject || existingTemplate.subject,
+      html: update.html || existingTemplate.html,
+      amp: update.amp || existingTemplate.amp,
+      formHtml: update.formHtml || existingTemplate.formHtml,
+      variables: update.variables || existingTemplate.variables,
+      sourceJson: update.sourceJson || existingTemplate.sourceJson
+    });
+
+    if (update.status === "published" && !validation.valid) {
+      return res.status(422).json({
+        success: false,
+        message: "Template validation failed",
+        validation
+      });
+    }
+
+    const updateQuery = {
+      $set: update,
+      $inc: {
+        version: 1
+      },
+      $push: {
+        auditHistory: {
+          action: "updated",
+          summary: update.sourceJson ? "Updated builder source" : "Updated template markup"
+        }
+      }
+    };
+
+    const template = await AmpTemplate.findByIdAndUpdate(
+      req.params.id,
+      updateQuery,
+      {
+        returnDocument: "after",
+        runValidators: true
+      }
+    );
+
+    await snapshotTemplate(template, update.sourceJson ? "Updated builder source" : "Updated template markup");
+
+    return res.json({
+      success: true,
+      message: "Template updated",
+      template,
+      validation
+    });
+  } catch (err) {
+    console.error("UPDATE TEMPLATE ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Template update failed"
+    });
+  }
+};
+
+export const listTemplateVersions = async (req, res) => {
+  try {
+    const versions = await TemplateVersion
+      .find({ templateId: req.params.id })
+      .select("-html -amp -formHtml")
+      .sort({ version: -1 });
+
+    return res.json({
+      success: true,
+      versions
+    });
+  } catch (err) {
+    console.error("LIST TEMPLATE VERSIONS ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Template version list failed"
+    });
+  }
+};
+
+export const getTemplateVersion = async (req, res) => {
+  try {
+    const version = await TemplateVersion.findOne({
+      templateId: req.params.id,
+      version: Number(req.params.version)
+    });
+
+    if (!version) {
+      return res.status(404).json({
+        success: false,
+        message: "Template version not found"
+      });
+    }
+
+    return res.json({
+      success: true,
+      version
+    });
+  } catch (err) {
+    console.error("GET TEMPLATE VERSION ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Template version fetch failed"
+    });
+  }
+};
+
+export const restoreTemplateVersion = async (req, res) => {
+  try {
+    const version = await TemplateVersion.findOne({
+      templateId: req.params.id,
+      version: Number(req.params.version)
+    });
+
+    if (!version) {
+      return res.status(404).json({
+        success: false,
+        message: "Template version not found"
+      });
+    }
+
+    const restored = await AmpTemplate.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: {
+          name: version.name,
+          subject: version.subject,
+          status: "draft",
+          sourceJson: version.sourceJson,
+          html: version.html,
+          amp: version.amp,
+          formHtml: version.formHtml,
+          text: version.text,
+          variables: version.variables
+        },
+        $inc: {
+          version: 1
+        },
+        $push: {
+          auditHistory: {
+            action: "restored",
+            summary: `Restored from version ${version.version}`
+          }
+        }
+      },
+      {
+        returnDocument: "after",
+        runValidators: true
+      }
+    );
+
+    if (!restored) {
+      return res.status(404).json({
+        success: false,
+        message: "Template not found"
+      });
+    }
+
+    await snapshotTemplate(restored, `Restored from version ${version.version}`);
+
+    return res.json({
+      success: true,
+      message: "Template version restored",
+      template: restored
+    });
+  } catch (err) {
+    console.error("RESTORE TEMPLATE VERSION ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Template restore failed"
+    });
+  }
+};
+
+export const duplicateTemplate = async (req, res) => {
+  try {
+    const template = await AmpTemplate.findById(req.params.id).lean();
+
+    if (!template) {
+      return res.status(404).json({
+        success: false,
+        message: "Template not found"
+      });
+    }
+
+    const copyName = `${template.name} Copy`;
+    const copy = await AmpTemplate.create({
+      ...template,
+      _id: undefined,
+      name: copyName,
+      slug: `${createSlug(copyName)}-${Date.now()}`,
+      status: "draft",
+      version: 1,
+      createdAt: undefined,
+      updatedAt: undefined,
+      auditHistory: [
+        ...(template.auditHistory || []),
+        {
+          action: "duplicated",
+          summary: `Duplicated from ${template.name}`
+        }
+      ]
+    });
+
+    await snapshotTemplate(copy, `Duplicated from ${template.name}`);
+
+    return res.status(201).json({
+      success: true,
+      message: "Template duplicated",
+      template: copy
+    });
+  } catch (err) {
+    console.error("DUPLICATE TEMPLATE ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Template duplicate failed"
+    });
+  }
+};
+
+export const createSavedBlock = async (req, res) => {
+  try {
+    const {
+      name,
+      type,
+      category,
+      block,
+      thumbnailUrl,
+      tags
+    } = req.body;
+
+    if (!name || !type || !block) {
+      return res.status(400).json({
+        success: false,
+        message: "Saved block name, type and block are required"
+      });
+    }
+
+    const savedBlock = await SavedBlock.create({
+      name,
+      type,
+      category,
+      block,
+      thumbnailUrl,
+      tags
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Saved block created",
+      savedBlock
+    });
+  } catch (err) {
+    console.error("CREATE SAVED BLOCK ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Saved block create failed"
+    });
+  }
+};
+
+export const listSavedBlocks = async (req, res) => {
+  try {
+    const query = {
+      isActive: true
+    };
+
+    if (req.query.type) {
+      query.type = req.query.type;
+    }
+
+    if (req.query.category) {
+      query.category = req.query.category;
+    }
+
+    if (req.query.search) {
+      query.$or = [
+        { name: new RegExp(req.query.search, "i") },
+        { type: new RegExp(req.query.search, "i") },
+        { category: new RegExp(req.query.search, "i") },
+        { tags: new RegExp(req.query.search, "i") }
+      ];
+    }
+
+    const savedBlocks = await SavedBlock
+      .find(query)
+      .sort({ usageCount: -1, createdAt: -1 });
+
+    return res.json({
+      success: true,
+      savedBlocks
+    });
+  } catch (err) {
+    console.error("LIST SAVED BLOCKS ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Saved block list failed"
+    });
+  }
+};
+
+export const getSavedBlock = async (req, res) => {
+  try {
+    const savedBlock = await SavedBlock.findByIdAndUpdate(
+      req.params.blockId,
+      {
+        $inc: {
+          usageCount: 1
+        }
+      },
+      {
+        returnDocument: "after"
+      }
+    );
+
+    if (!savedBlock) {
+      return res.status(404).json({
+        success: false,
+        message: "Saved block not found"
+      });
+    }
+
+    return res.json({
+      success: true,
+      savedBlock
+    });
+  } catch (err) {
+    console.error("GET SAVED BLOCK ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Saved block fetch failed"
+    });
+  }
+};
+
+export const updateSavedBlock = async (req, res) => {
+  try {
+    const savedBlock = await SavedBlock.findByIdAndUpdate(
+      req.params.blockId,
+      {
+        $set: req.body
+      },
+      {
+        returnDocument: "after",
+        runValidators: true
+      }
+    );
+
+    if (!savedBlock) {
+      return res.status(404).json({
+        success: false,
+        message: "Saved block not found"
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Saved block updated",
+      savedBlock
+    });
+  } catch (err) {
+    console.error("UPDATE SAVED BLOCK ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Saved block update failed"
+    });
+  }
+};
+
+export const archiveSavedBlock = async (req, res) => {
+  try {
+    const savedBlock = await SavedBlock.findByIdAndUpdate(
+      req.params.blockId,
+      {
+        $set: {
+          isActive: false
+        }
+      },
+      {
+        returnDocument: "after"
+      }
+    );
+
+    if (!savedBlock) {
+      return res.status(404).json({
+        success: false,
+        message: "Saved block not found"
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Saved block archived",
+      savedBlock
+    });
+  } catch (err) {
+    console.error("ARCHIVE SAVED BLOCK ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Saved block archive failed"
+    });
+  }
+};
+
+export const previewTemplate = async (req, res) => {
+  try {
+    const {
+      sourceJson,
+      subject,
+      html,
+      amp,
+      formHtml,
+      text,
+      variables = {}
+    } = req.body;
+
+    if (!sourceJson && !html) {
+      return res.status(400).json({
+        success: false,
+        message: "sourceJson or html is required"
+      });
+    }
+
+    const compiled = sourceJson
+      ? compileTemplateSource(sourceJson)
+      : {
+          subject,
+          html,
+          amp,
+          formHtml,
+          text,
+          variables: extractTemplateVariables(html, amp, formHtml, subject)
+        };
+    const previewValues = {
+      email: "preview@example.com",
+      firstName: "Preview",
+      formHtmlUrl: "#",
+      formAmpUrl: "#",
+      formActionUrl: "#",
+      directFormHtmlUrl: "#",
+      unsubscribeUrl: "#",
+      preheader: "",
+      ...variables
+    };
+
+    const validation = getValidationPayload({
+      subject: sourceJson?.subject || subject,
+      html: compiled.html,
+      amp: compiled.amp,
+      formHtml: compiled.formHtml,
+      variables: compiled.variables,
+      sourceJson,
+      providedVariables: variables
+    });
+
+    return res.json({
+      success: true,
+      compiled,
+      validation,
+      rendered: {
+        html: renderTemplateExpressions(compiled.html, previewValues),
+        amp: renderTemplateExpressions(compiled.amp, previewValues),
+        formHtml: renderTemplateExpressions(compiled.formHtml, previewValues),
+        text: renderTemplateExpressions(compiled.text, previewValues)
+      }
+    });
+  } catch (err) {
+    console.error("PREVIEW TEMPLATE ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Template preview failed"
+    });
+  }
+};
+
+export const validateTemplateController = async (req, res) => {
+  try {
+    const {
+      sourceJson,
+      subject,
+      html,
+      amp,
+      formHtml,
+      variables,
+      providedVariables
+    } = req.body;
+
+    const compiled = sourceJson
+      ? compileTemplateSource({
+          ...sourceJson,
+          subject: subject || sourceJson.subject
+        })
+      : null;
+    const validation = getValidationPayload({
+      subject: subject || sourceJson?.subject,
+      html: compiled?.html || html,
+      amp: compiled?.amp || amp,
+      formHtml: compiled?.formHtml || formHtml,
+      variables: variables || compiled?.variables || extractTemplateVariables(html, amp, formHtml, subject),
+      sourceJson,
+      providedVariables
+    });
+
+    return res.status(validation.valid ? 200 : 422).json({
+      success: validation.valid,
+      validation,
+      compiled
+    });
+  } catch (err) {
+    console.error("VALIDATE TEMPLATE ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Template validation failed"
+    });
+  }
+};
+
+export const getBuilderBlockCatalog = (req, res) => {
+  return res.json({
+    success: true,
+    blocks: builderBlockCatalog
+  });
+};
+
+export const getBuilderEditorConfig = (req, res) => {
+  return res.json({
+    success: true,
+    config: builderEditorConfig
+  });
+};
+
+export const getStarterTemplateSource = (req, res) => {
+  return res.json({
+    success: true,
+    sourceJson: starterTemplateSource
+  });
+};
