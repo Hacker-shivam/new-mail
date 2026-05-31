@@ -25,43 +25,137 @@ const numberFrom = (...values) => {
 };
 
 const getImageSize = (props = {}) => {
-  const width = numberFrom(props.width, props.naturalWidth, props.imageWidth) || 600;
-  const height = numberFrom(
-    props.height,
-    props.naturalHeight,
-    props.imageHeight,
-    props.originalHeight
-  );
-  const ratio = numberFrom(props.aspectRatio);
-  const source = String(props.src || props.imageUrl || "");
-  const isLikelyPoster = /(?:whatsapp|poster|flyer|story|portrait|vertical)/i.test(source)
-    || width < (height || 0);
-
   return {
-    width,
-    height: isLikelyPoster && (!height || height < width)
-      ? Math.round(width * 1.69)
-      : height || (ratio ? Math.round(width / ratio) : 1014)
+    width: 600,
+    height: 850
   };
 };
+
+const firstValue = (...values) => {
+  return values.find((value) => value !== undefined && value !== null && value !== "");
+};
+
+const getBackgroundImage = (source = {}) => firstValue(
+  source.backgroundImage,
+  source.backgroundImageUrl,
+  source.backgroundUrl,
+  source.bgImage,
+  source.bgImageUrl,
+  source.bgUrl,
+  source.image
+);
+
+const getButtonBackgroundColor = (source = {}) => firstValue(
+  source.buttonBackgroundColor,
+  source.buttonColor,
+  source.submitButtonColor,
+  source.submitBackgroundColor,
+  source.ctaBackgroundColor,
+  source.backgroundColor
+);
+
+const getButtonTextColor = (source = {}) => firstValue(
+  source.buttonTextColor,
+  source.submitButtonTextColor,
+  source.submitColor,
+  source.textButtonColor,
+  source.ctaTextColor,
+  source.color
+);
 
 const getTheme = (sourceJson = {}) => ({
   width: sourceJson.theme?.width || 600,
   backgroundColor: sourceJson.theme?.backgroundColor || "#f8fafc",
+  backgroundImage: getBackgroundImage(sourceJson.theme) || "",
   contentColor: sourceJson.theme?.contentColor || "#ffffff",
+  contentBackgroundImage: firstValue(
+    sourceJson.theme?.contentBackgroundImage,
+    sourceJson.theme?.contentBackgroundImageUrl,
+    sourceJson.theme?.contentBackgroundUrl,
+    sourceJson.theme?.contentBgImage,
+    sourceJson.theme?.contentBgUrl
+  ) || "",
+  formBackgroundColor: sourceJson.theme?.formBackgroundColor || sourceJson.theme?.form?.backgroundColor || sourceJson.theme?.contentColor || "#ffffff",
+  formBackgroundImage: firstValue(
+    sourceJson.theme?.formBackgroundImage,
+    sourceJson.theme?.formBackgroundImageUrl,
+    sourceJson.theme?.formBackgroundUrl,
+    sourceJson.theme?.formBgImage,
+    sourceJson.theme?.formBgImageUrl,
+    sourceJson.theme?.formBgUrl,
+    getBackgroundImage(sourceJson.theme?.form)
+  ) || "",
   darkBackgroundColor: sourceJson.theme?.darkBackgroundColor || sourceJson.theme?.darkMode?.backgroundColor || "#111827",
   darkContentColor: sourceJson.theme?.darkContentColor || sourceJson.theme?.darkMode?.contentColor || "#1f2937",
   darkTextColor: sourceJson.theme?.darkTextColor || sourceJson.theme?.darkMode?.textColor || "#f9fafb",
   darkMutedColor: sourceJson.theme?.darkMutedColor || sourceJson.theme?.darkMode?.mutedColor || "#cbd5e1",
   textColor: sourceJson.theme?.textColor || "#111827",
   mutedColor: sourceJson.theme?.mutedColor || "#64748b",
-  primaryColor: sourceJson.theme?.primaryColor || "#178218",
+  primaryColor: firstValue(
+    sourceJson.theme?.primaryColor,
+    sourceJson.theme?.buttonColor,
+    sourceJson.theme?.buttonBackgroundColor,
+    sourceJson.theme?.submitButtonColor
+  ) || "#178218",
+  buttonColor: firstValue(
+    sourceJson.theme?.buttonColor,
+    sourceJson.theme?.buttonBackgroundColor,
+    sourceJson.theme?.submitButtonColor,
+    sourceJson.theme?.primaryColor
+  ) || "#178218",
+  buttonTextColor: firstValue(
+    sourceJson.theme?.buttonTextColor,
+    sourceJson.theme?.submitButtonTextColor
+  ) || "#ffffff",
+  labelColor: firstValue(sourceJson.theme?.labelColor, sourceJson.theme?.labelColour, sourceJson.theme?.fieldLabelColor, sourceJson.theme?.textColor) || "#111827",
+  inputBackgroundColor: firstValue(sourceJson.theme?.inputBackgroundColor, sourceJson.theme?.inputBgColor, sourceJson.theme?.fieldBackgroundColor) || "#ffffff",
+  inputTextColor: firstValue(
+    sourceJson.theme?.inputTextColor,
+    sourceJson.theme?.inputTextColour,
+    sourceJson.theme?.inputValueColor,
+    sourceJson.theme?.inputValueColour,
+    sourceJson.theme?.inputColor,
+    sourceJson.theme?.fieldTextColor,
+    sourceJson.theme?.fieldValueColor,
+    sourceJson.theme?.formInputValueColor,
+    sourceJson.theme?.textColor
+  ) || "#111827",
+  inputBorderColor: firstValue(sourceJson.theme?.inputBorderColor, sourceJson.theme?.inputBorderColour, sourceJson.theme?.fieldBorderColor) || "#d1d5db",
+  successColor: sourceJson.theme?.successColor || sourceJson.theme?.primaryColor || "#178218",
+  thankYouTitle: sourceJson.theme?.thankYouTitle || sourceJson.theme?.successTitle || "Thank you!",
+  thankYouMessage: sourceJson.theme?.thankYouMessage || sourceJson.theme?.successMessage || "Your details have been submitted successfully.",
+  errorColor: sourceJson.theme?.errorColor || "#dc2626",
   followDeviceColorScheme: sourceJson.theme?.followDeviceColorScheme !== false,
   fontFamily: sourceJson.theme?.fontFamily || "Arial, sans-serif"
 });
 
 const getBlocks = (sourceJson = {}) => {
-  return Array.isArray(sourceJson.blocks) ? sourceJson.blocks : [];
+  const blocks = Array.isArray(sourceJson.blocks) ? [...sourceJson.blocks] : [];
+  const hasSocialBlock = blocks.some((block) => ["social", "socialLinks", "socialIcons"].includes(block.type));
+  const hasFooterBlock = blocks.some((block) => block.type === "footer");
+
+  if (!hasSocialBlock && Array.isArray(sourceJson.socialLinks) && sourceJson.socialLinks.length) {
+    blocks.push({
+      type: "socialLinks",
+      props: {
+        links: sourceJson.socialLinks,
+        ...(sourceJson.social || {})
+      }
+    });
+  }
+
+  if (!hasFooterBlock && sourceJson.autoUnsubscribeFooter !== false) {
+    blocks.push({
+      type: "footer",
+      props: {
+        ...(sourceJson.footer || {}),
+        unsubscribeButton: sourceJson.unsubscribeButton,
+        unsubscribe: sourceJson.unsubscribe !== false
+      }
+    });
+  }
+
+  return blocks;
 };
 
 const style = (values) => {
@@ -69,6 +163,29 @@ const style = (values) => {
     .filter(([, value]) => value !== undefined && value !== null && value !== "")
     .map(([key, value]) => `${key}:${value}`)
     .join(";");
+};
+
+const cssUrl = (value) => {
+  const url = String(value || "").trim();
+
+  return url ? `url('${url.replace(/'/g, "%27")}')` : "";
+};
+
+const backgroundImageStyles = (image, {
+  size = "cover",
+  position = "center",
+  repeat = "no-repeat"
+} = {}) => {
+  if (!image) {
+    return {};
+  }
+
+  return {
+    "background-image": cssUrl(image),
+    "background-size": size,
+    "background-position": position,
+    "background-repeat": repeat
+  };
 };
 
 const getVisibilityToken = (visibility) => {
@@ -114,12 +231,8 @@ const renderText = (block, theme, tag = "p") => {
 
 const renderImageHtml = (block) => {
   const props = block.props || {};
-  const padding = props.padding || "0";
-  const margin = props.align === "right"
-    ? "0 0 0 auto"
-    : props.align === "left"
-      ? "0"
-      : "0 auto";
+  const padding = "0";
+  const margin = "0";
   const image = `<img src="${escapeAttr(props.src)}" alt="${escapeAttr(props.alt || "")}" width="100%" style="${style({
     display: "block",
     border: "0",
@@ -131,19 +244,15 @@ const renderImageHtml = (block) => {
   })}" />`;
 
   return props.href
-    ? `<table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0"><tr><td style="padding:${padding}"><a href="${escapeAttr(props.href)}" target="_blank">${image}</a></td></tr></table>`
-    : `<table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0"><tr><td style="padding:${padding}">${image}</td></tr></table>`;
+    ? `<table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="width:100%;min-width:100%;margin:0;padding:0;border-collapse:collapse"><tr><td style="padding:${padding};margin:0"><a href="${escapeAttr(props.href)}" target="_blank" style="display:block;margin:0;padding:0">${image}</a></td></tr></table>`
+    : `<table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="width:100%;min-width:100%;margin:0;padding:0;border-collapse:collapse"><tr><td style="padding:${padding};margin:0">${image}</td></tr></table>`;
 };
 
 const renderImageAmp = (block) => {
   const props = block.props || {};
-  const padding = props.padding || "0";
+  const padding = "0";
   const { width, height } = getImageSize(props);
-  const textAlign = props.align === "right"
-    ? "right"
-    : props.align === "left"
-      ? "left"
-      : "center";
+  const textAlign = "left";
   const image = `<div style="padding:${padding};text-align:${textAlign}"><amp-img src="${escapeAttr(props.src)}" alt="${escapeAttr(props.alt || "")}" width="${width}" height="${height}" layout="responsive"></amp-img></div>`;
 
   return props.href
@@ -155,12 +264,12 @@ const renderButton = (block, theme) => {
   const props = block.props || {};
   const text = escapeHtml(props.text || "Click");
   const href = escapeAttr(props.href || "{{formHtmlUrl}}");
-  const backgroundColor = props.backgroundColor || theme.primaryColor;
-  const color = props.color || "#ffffff";
+  const backgroundColor = getButtonBackgroundColor(props) || theme.buttonColor || theme.primaryColor;
+  const color = getButtonTextColor(props) || theme.buttonTextColor || "#ffffff";
 
   return `<table role="presentation" align="${props.align || "center"}" border="0" cellpadding="0" cellspacing="0" style="margin:${props.margin || "18px auto"}">
   <tr>
-    <td align="center" bgcolor="${escapeAttr(backgroundColor)}" style="border-radius:${px(props.radius, "6px")}">
+    <td align="center" bgcolor="${escapeAttr(backgroundColor)}" style="border-radius:${px(firstValue(props.buttonRadius, props.radius), "6px")}">
       <a href="${href}" target="_blank" style="${style({
         display: "inline-block",
         background: backgroundColor,
@@ -170,8 +279,8 @@ const renderButton = (block, theme) => {
         "font-weight": props.fontWeight || "700",
         "line-height": "1",
         "text-decoration": "none",
-        padding: props.padding || "13px 20px",
-        "border-radius": px(props.radius, "6px")
+        padding: props.buttonPadding || props.padding || "13px 20px",
+        "border-radius": px(firstValue(props.buttonRadius, props.radius), "6px")
       })}">${text}</a>
     </td>
   </tr>
@@ -265,6 +374,57 @@ const renderNavbar = (block, theme) => {
       "text-decoration": "none",
       margin: "0 10px"
     })}">${escapeHtml(link.label)}</a>`).join("")}
+  </div>`;
+};
+
+const getSocialIconUrl = (item = {}) => firstValue(
+  item.iconUrl,
+  item.logoUrl,
+  item.imageUrl,
+  item.src,
+  item.icon,
+  item.logo
+);
+
+const renderSocialLinks = (block, theme, target = "html") => {
+  const props = block.props || {};
+  const links = props.links || props.items || props.socialLinks || [];
+
+  if (!Array.isArray(links) || !links.length) {
+    return "";
+  }
+
+  return `<div style="${style({
+    "font-family": theme.fontFamily,
+    "text-align": props.align || "center",
+    margin: props.margin || "18px 0",
+    padding: props.padding
+  })}">
+    ${links.map((item) => {
+      const href = escapeAttr(item.href || item.url || "#");
+      const label = escapeHtml(item.label || item.name || item.platform || "Social");
+      const iconUrl = getSocialIconUrl(item);
+      const size = Number(item.size || props.iconSize || props.size) || 32;
+
+      const imageMarkup = target === "amp"
+        ? `<amp-img src="${escapeAttr(iconUrl)}" alt="${label}" width="${size}" height="${size}" layout="fixed"></amp-img>`
+        : `<img src="${escapeAttr(iconUrl)}" alt="${label}" width="${size}" height="${size}" style="${style({
+            display: "block",
+            border: "0",
+            width: `${size}px`,
+            height: `${size}px`,
+            "border-radius": px(item.radius || props.iconRadius, "0")
+          })}">`;
+
+      return `<a href="${href}" target="_blank" style="${style({
+        display: "inline-block",
+        margin: item.margin || props.itemMargin || "0 6px",
+        color: item.color || props.color || theme.primaryColor,
+        "font-size": px(props.fontSize, "13px"),
+        "text-decoration": "none",
+        "vertical-align": "middle"
+      })}">${iconUrl ? imageMarkup : label}</a>`;
+    }).join("")}
   </div>`;
 };
 
@@ -708,30 +868,94 @@ const renderCarousel = (block, theme) => {
 const renderHtmlFormButton = (block, theme) => {
   return renderButton({
     props: {
+      ...(block.props || {}),
       text: block.props?.submitText || block.props?.buttonText || "Open Form",
-      href: "{{formHtmlUrl}}",
-      backgroundColor: block.props?.backgroundColor,
-      color: block.props?.color
+      href: "{{formHtmlUrl}}"
     }
   }, theme);
 };
 
-const renderFields = (fields = [], amp = false) => {
+const getFormFieldTheme = (props = {}, theme = {}) => ({
+  ...theme,
+  labelColor: firstValue(
+    props.labelColor,
+    props.labelColour,
+    props.fieldLabelColor,
+    props.inputLabelColor,
+    props.formLabelColor,
+    theme.labelColor
+  ),
+  inputBackgroundColor: firstValue(
+    props.inputBackgroundColor,
+    props.inputBgColor,
+    props.fieldBackgroundColor,
+    props.fieldBgColor,
+    theme.inputBackgroundColor
+  ),
+  inputTextColor: firstValue(
+    props.inputTextColor,
+    props.inputTextColour,
+    props.inputValueColor,
+    props.inputValueColour,
+    props.inputColor,
+    props.fieldTextColor,
+    props.fieldValueColor,
+    props.formInputTextColor,
+    props.formInputValueColor,
+    theme.inputTextColor
+  ),
+  inputBorderColor: firstValue(
+    props.inputBorderColor,
+    props.inputBorderColour,
+    props.fieldBorderColor,
+    props.formInputBorderColor,
+    theme.inputBorderColor
+  )
+});
+
+const renderFields = (fields = [], amp = false, theme = {}) => {
   return fields.map((field) => {
     const name = escapeAttr(field.name);
     const label = escapeHtml(field.label || field.name);
     const required = field.required ? " required" : "";
-    const commonStyle = "width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:6px;padding:12px;font-size:15px";
+    const labelStyle = style({
+      display: "block",
+      margin: field.labelMargin || "14px 0 6px",
+      "font-weight": field.labelFontWeight || "700",
+      color: firstValue(field.labelColor, field.labelColour, field.fieldLabelColor, theme.labelColor, theme.textColor)
+    });
+    const commonStyle = style({
+      width: "100%",
+      "box-sizing": "border-box",
+      border: `1px solid ${firstValue(field.borderColor, field.borderColour, field.inputBorderColor, field.inputBorderColour, field.fieldBorderColor, theme.inputBorderColor, "#d1d5db")}`,
+      "border-radius": px(field.radius || field.inputRadius, "6px"),
+      padding: field.padding || field.inputPadding || "12px",
+      "font-size": px(field.fontSize || field.inputFontSize, "15px"),
+      background: firstValue(field.backgroundColor, field.inputBackgroundColor, field.inputBgColor, field.fieldBackgroundColor, theme.inputBackgroundColor, "#ffffff"),
+      color: firstValue(
+        field.color,
+        field.textColor,
+        field.inputTextColor,
+        field.inputTextColour,
+        field.inputValueColor,
+        field.inputValueColour,
+        field.inputColor,
+        field.fieldTextColor,
+        field.fieldValueColor,
+        theme.inputTextColor,
+        theme.textColor
+      )
+    });
 
     if (field.type === "textarea") {
-      return `<label style="display:block;margin:14px 0 6px;font-weight:700">${label}${field.required ? " *" : ""}</label><textarea name="${name}"${required} style="${commonStyle};min-height:90px"></textarea>`;
+      return `<label style="${labelStyle}">${label}${field.required ? " *" : ""}</label><textarea name="${name}"${required} style="${commonStyle};min-height:${px(field.height, "90px")}"></textarea>`;
     }
 
     if (field.type === "select" && Array.isArray(field.options)) {
       const options = field.options
         .map((option) => `<option value="${escapeAttr(option.value || option)}">${escapeHtml(option.label || option)}</option>`)
         .join("");
-      return `<label style="display:block;margin:14px 0 6px;font-weight:700">${label}${field.required ? " *" : ""}</label><select name="${name}"${required} style="${commonStyle}">${options}</select>`;
+      return `<label style="${labelStyle}">${label}${field.required ? " *" : ""}</label><select name="${name}"${required} style="${commonStyle}">${options}</select>`;
     }
 
     if ((field.type === "radio" || field.type === "checkbox") && Array.isArray(field.options)) {
@@ -740,96 +964,202 @@ const renderFields = (fields = [], amp = false) => {
         .map((option) => {
           const optionValue = escapeAttr(option.value || option);
           const optionLabel = escapeHtml(option.label || option);
-          return `<label style="display:block;margin:8px 0;font-weight:400"><input type="${type}" name="${name}" value="${optionValue}"${required}> ${optionLabel}</label>`;
+          return `<label style="${style({
+            display: "block",
+            margin: "8px 0",
+            "font-weight": "400",
+            color: firstValue(field.optionColor, field.optionTextColor, theme.inputTextColor, theme.textColor)
+          })}"><input type="${type}" name="${name}" value="${optionValue}"${required}> ${optionLabel}</label>`;
         })
         .join("");
 
-      return `<div style="margin:14px 0 6px;font-weight:700">${label}${field.required ? " *" : ""}</div>${options}`;
+      return `<div style="${labelStyle}">${label}${field.required ? " *" : ""}</div>${options}`;
     }
 
     const type = ["email", "tel", "number", "date"].includes(field.type) ? field.type : "text";
-    return `<label style="display:block;margin:14px 0 6px;font-weight:700">${label}${field.required ? " *" : ""}</label><input type="${type}" name="${name}" placeholder="${escapeAttr(field.placeholder || "")}"${required} style="${commonStyle}">`;
+    return `<label style="${labelStyle}">${label}${field.required ? " *" : ""}</label><input type="${type}" name="${name}" placeholder="${escapeAttr(field.placeholder || "")}"${required} style="${commonStyle}">`;
   }).join("");
+};
+
+const renderThankYouMessage = (props = {}, theme = {}) => {
+  const title = props.thankYouTitle || props.successTitle || theme.thankYouTitle || "Thank you!";
+  const message = props.thankYouMessage || props.successMessage || theme.thankYouMessage || "Your details have been submitted successfully.";
+  const backgroundColor = props.thankYouBackgroundColor || props.successBackgroundColor || props.formBackgroundColor || props.contentColor || theme.formBackgroundColor || "#ffffff";
+  const borderColor = props.thankYouBorderColor || props.successBorderColor || props.successColor || theme.successColor || theme.primaryColor;
+  const titleColor = props.thankYouTitleColor || props.successTitleColor || props.successColor || theme.successColor || theme.primaryColor;
+  const textColor = props.thankYouTextColor || props.successTextColor || props.textColor || theme.textColor;
+
+  return `<div style="${style({
+    margin: props.thankYouMargin || "18px 0 0",
+    padding: props.thankYouPadding || "16px",
+    "border-radius": px(props.thankYouRadius || props.radius, "8px"),
+    border: `1px solid ${borderColor}`,
+    background: backgroundColor,
+    "text-align": props.thankYouAlign || "center"
+  })}">
+    <p style="${style({
+      margin: "0 0 6px",
+      color: titleColor,
+      "font-size": px(props.thankYouTitleSize, "18px"),
+      "font-weight": "700"
+    })}">${escapeHtml(title)}</p>
+    <p style="${style({
+      margin: "0",
+      color: textColor,
+      "font-size": px(props.thankYouTextSize, "14px"),
+      "line-height": "1.45"
+    })}">${escapeHtml(message)}</p>
+  </div>`;
 };
 
 const renderAmpForm = (block, theme) => {
   const props = block.props || {};
-  const fields = renderFields(props.fields || [], true);
+  const fieldTheme = getFormFieldTheme(props, theme);
+  const fields = renderFields(props.fields || [], true, fieldTheme);
   const actionUrl = props.actionXhr || props.formAmpUrl || "https://example.com/amp-form-submit";
+  const formBackgroundImage = firstValue(
+    props.formBackgroundImage,
+    props.formBackgroundImageUrl,
+    props.formBackgroundUrl,
+    props.formBgImage,
+    props.formBgImageUrl,
+    props.formBgUrl,
+    getBackgroundImage(props),
+    theme.formBackgroundImage
+  );
 
   return `<form method="post" action-xhr="${escapeAttr(actionUrl)}" style="${style({
-    border: `1px solid ${props.borderColor || "#e5e7eb"}`,
+    "background-color": props.formBackgroundColor || props.contentColor || props.backgroundColor || theme.formBackgroundColor,
+    ...backgroundImageStyles(formBackgroundImage, {
+      size: props.backgroundSize,
+      position: props.backgroundPosition,
+      repeat: props.backgroundRepeat
+    }),
+    border: props.border || `1px solid ${props.borderColor || "#e5e7eb"}`,
     "border-radius": px(props.radius, "8px"),
     padding: props.padding || "20px",
     "font-family": theme.fontFamily,
-    color: theme.textColor
+    color: props.textColor || theme.textColor
   })}">
-  ${props.title ? `<h2 style="margin:0 0 8px">${escapeHtml(props.title)}</h2>` : ""}
-  ${props.description ? `<p style="margin:0 0 14px;color:${theme.mutedColor}">${escapeHtml(props.description)}</p>` : ""}
+  ${props.title ? `<h2 style="${style({
+    margin: props.titleMargin || "0 0 8px",
+    color: props.titleColor || props.headingColor || theme.textColor,
+    "font-size": px(props.titleSize || props.titleFontSize, "24px")
+  })}">${escapeHtml(props.title)}</h2>` : ""}
+  ${props.description ? `<p style="${style({
+    margin: props.descriptionMargin || "0 0 14px",
+    color: props.descriptionColor || props.mutedColor || theme.mutedColor
+  })}">${escapeHtml(props.description)}</p>` : ""}
   ${fields}
   <button type="submit" style="${style({
     width: "100%",
     margin: "18px 0 0",
     border: "0",
-    "border-radius": px(props.buttonRadius, "6px"),
-    background: props.backgroundColor || theme.primaryColor,
-    color: props.color || "#ffffff",
-    padding: "13px",
-    "font-size": "16px",
-    "font-weight": "700"
+    "border-radius": px(props.buttonRadius || props.submitButtonRadius, "6px"),
+    background: getButtonBackgroundColor(props) || theme.buttonColor || theme.primaryColor,
+    color: getButtonTextColor(props) || theme.buttonTextColor || "#ffffff",
+    padding: props.buttonPadding || props.submitButtonPadding || "13px",
+    "font-size": px(props.buttonFontSize || props.submitButtonFontSize, "16px"),
+    "font-weight": props.buttonFontWeight || props.submitButtonFontWeight || "700"
   })}">${escapeHtml(props.submitText || "Submit")}</button>
-  <div submit-success><template type="amp-mustache"><p style="color:${theme.primaryColor};text-align:center;font-weight:700">Submitted successfully.</p></template></div>
-  <div submit-error><template type="amp-mustache"><p style="color:#dc2626;text-align:center;font-weight:700">Submission failed.</p></template></div>
+  <div submit-success><template type="amp-mustache">${renderThankYouMessage(props, theme)}</template></div>
+  <div submit-error><template type="amp-mustache"><p style="color:${props.errorColor || theme.errorColor};text-align:center;font-weight:700">Submission failed.</p></template></div>
 </form>`;
 };
 
 const renderFormPageForm = (block, theme) => {
   const props = block.props || {};
+  const formBackgroundImage = firstValue(
+    props.formBackgroundImage,
+    props.formBackgroundImageUrl,
+    props.formBackgroundUrl,
+    props.formBgImage,
+    props.formBgImageUrl,
+    props.formBgUrl,
+    getBackgroundImage(props),
+    theme.formBackgroundImage
+  );
+
   return `<form method="post" action-xhr="{{formActionUrl}}" target="_top" style="${style({
     margin: "0 auto",
     "max-width": "560px",
-    background: theme.contentColor,
-    border: "1px solid #e5e7eb",
-    "border-radius": "8px",
-    padding: "24px",
+    "background-color": props.formBackgroundColor || props.contentColor || props.backgroundColor || theme.formBackgroundColor,
+    ...backgroundImageStyles(formBackgroundImage, {
+      size: props.backgroundSize,
+      position: props.backgroundPosition,
+      repeat: props.backgroundRepeat
+    }),
+    border: props.border || `1px solid ${props.borderColor || "#e5e7eb"}`,
+    "border-radius": px(props.radius, "8px"),
+    padding: props.padding || "24px",
     "font-family": theme.fontFamily,
-    color: theme.textColor
+    color: props.textColor || theme.textColor
   })}">
-  ${props.title ? `<h1 style="margin:0 0 8px;font-size:24px">${escapeHtml(props.title)}</h1>` : ""}
-  ${props.description ? `<p style="margin:0 0 16px;color:${theme.mutedColor}">${escapeHtml(props.description)}</p>` : ""}
-  ${renderFields(props.fields || [])}
+  ${props.title ? `<h1 style="${style({
+    margin: props.titleMargin || "0 0 8px",
+    color: props.titleColor || props.headingColor || theme.textColor,
+    "font-size": px(props.titleSize || props.titleFontSize, "24px")
+  })}">${escapeHtml(props.title)}</h1>` : ""}
+  ${props.description ? `<p style="${style({
+    margin: props.descriptionMargin || "0 0 16px",
+    color: props.descriptionColor || props.mutedColor || theme.mutedColor
+  })}">${escapeHtml(props.description)}</p>` : ""}
+  ${renderFields(props.fields || [], false, getFormFieldTheme(props, theme))}
   <button type="submit" style="${style({
     width: "100%",
     margin: "20px 0 0",
     border: "0",
-    "border-radius": "6px",
-    background: props.backgroundColor || theme.primaryColor,
-    color: props.color || "#ffffff",
-    padding: "13px",
-    "font-size": "16px",
-    "font-weight": "700"
+    "border-radius": px(props.buttonRadius || props.submitButtonRadius, "6px"),
+    background: getButtonBackgroundColor(props) || theme.buttonColor || theme.primaryColor,
+    color: getButtonTextColor(props) || theme.buttonTextColor || "#ffffff",
+    padding: props.buttonPadding || props.submitButtonPadding || "13px",
+    "font-size": px(props.buttonFontSize || props.submitButtonFontSize, "16px"),
+    "font-weight": props.buttonFontWeight || props.submitButtonFontWeight || "700"
   })}">${escapeHtml(props.submitText || "Submit")}</button>
   <div submit-success>
     <template type="amp-mustache">
-      <p style="color:${props.backgroundColor || theme.primaryColor};text-align:center;font-weight:700">Submitted successfully.</p>
+      ${renderThankYouMessage(props, theme)}
     </template>
   </div>
   <div submit-error>
     <template type="amp-mustache">
-      <p style="color:#dc2626;text-align:center;font-weight:700">Submission failed. Please try again.</p>
+      <p style="color:${props.errorColor || theme.errorColor};text-align:center;font-weight:700">Submission failed. Please try again.</p>
     </template>
   </div>
 </form>`;
 };
 
-const renderFooter = (theme) => {
+const renderFooter = (block = {}, theme, target = "html") => {
+  const props = block.props || {};
+  const unsubscribe = props.unsubscribe !== false;
+  const unsubscribeButton = props.unsubscribeButton || props.button || {};
+  const text = unsubscribeButton.text || props.unsubscribeText || "Unsubscribe";
+  const href = unsubscribeButton.href || props.unsubscribeUrl || "{{unsubscribeUrl}}";
+  const asButton = unsubscribeButton.variant === "button" || props.unsubscribeVariant === "button" || unsubscribeButton.backgroundColor;
+  const socialHtml = Array.isArray(props.socialLinks) && props.socialLinks.length
+    ? renderSocialLinks({ props: { links: props.socialLinks, ...(props.social || {}) } }, theme, target)
+    : "";
+
   return `<div style="${style({
     "font-family": theme.fontFamily,
-    "font-size": "12px",
-    color: "#6b7280",
-    "text-align": "center",
-    margin: "20px 0 0"
-  })}"><a href="{{unsubscribeUrl}}" style="color:#6b7280;text-decoration:underline">Unsubscribe</a></div>`;
+    "font-size": px(props.fontSize, "12px"),
+    color: props.color || "#6b7280",
+    "text-align": props.align || "center",
+    margin: props.margin || "20px 0 0",
+    padding: props.padding
+  })}">
+    ${socialHtml}
+    ${props.text ? `<p style="margin:0 0 10px;color:${props.color || "#6b7280"}">${escapeHtml(props.text)}</p>` : ""}
+    ${unsubscribe ? `<a href="${escapeAttr(href)}" target="_blank" style="${style({
+      display: asButton ? "inline-block" : undefined,
+      background: asButton ? (unsubscribeButton.backgroundColor || props.buttonColor || theme.buttonColor || theme.primaryColor) : undefined,
+      color: asButton ? (unsubscribeButton.color || props.buttonTextColor || theme.buttonTextColor || "#ffffff") : (unsubscribeButton.color || props.linkColor || "#6b7280"),
+      "text-decoration": asButton ? "none" : "underline",
+      padding: asButton ? (unsubscribeButton.padding || "10px 16px") : undefined,
+      "border-radius": asButton ? px(unsubscribeButton.radius || props.buttonRadius, "6px") : undefined,
+      "font-weight": asButton ? (unsubscribeButton.fontWeight || "700") : undefined
+    })}">${escapeHtml(text)}</a>` : ""}
+  </div>`;
 };
 
 const renderBlockInner = (block, target, theme) => {
@@ -862,6 +1192,10 @@ const renderBlockInner = (block, target, theme) => {
       return renderRawHtml(block);
     case "navbar":
       return renderNavbar(block, theme);
+    case "social":
+    case "socialLinks":
+    case "socialIcons":
+      return renderSocialLinks(block, theme, target);
     case "logoHeader":
       return renderLogoHeader(block, theme);
     case "productCard":
@@ -918,7 +1252,7 @@ const renderBlockInner = (block, target, theme) => {
         }
       }, theme);
     case "footer":
-      return renderFooter(theme);
+      return renderFooter(block, theme, target);
     default:
       return "";
   }
@@ -994,12 +1328,25 @@ const htmlDocument = (sourceJson) => {
   <title>${escapeHtml(sourceJson.subject || sourceJson.name || "Email")}</title>
   ${htmlDeviceColorStyles(theme)}
 </head>
-<body class="email-bg" style="margin:0;padding:0;background:${theme.backgroundColor}">
+<body class="email-bg" style="${style({
+  margin: "0",
+  padding: "0",
+  "background-color": theme.backgroundColor,
+  ...backgroundImageStyles(theme.backgroundImage)
+})}">
   <div style="display:none;max-height:0;overflow:hidden;color:transparent">{{preheader}}</div>
-  <table class="email-bg" role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="background:${theme.backgroundColor}">
+  <table class="email-bg" role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="${style({
+    "background-color": theme.backgroundColor,
+    ...backgroundImageStyles(theme.backgroundImage)
+  })}">
     <tr>
       <td align="center" style="padding:0">
-        <table class="email-shell" role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="width:100%;max-width:none;background:${theme.contentColor}">
+        <table class="email-shell" role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="${style({
+          width: "100%",
+          "max-width": "none",
+          "background-color": theme.contentColor,
+          ...backgroundImageStyles(theme.contentBackgroundImage)
+        })}">
           <tr>
             <td class="email-content" style="padding:0;color:${theme.textColor}">
               ${body}
@@ -1031,8 +1378,21 @@ const ampDocument = (sourceJson) => {
   <script async custom-template="amp-mustache" src="https://cdn.ampproject.org/v0/amp-mustache-0.2.js"></script>
   <style amp4email-boilerplate>body{visibility:hidden}</style>
   <style amp-custom>
-    body{margin:0;background:${theme.backgroundColor};font-family:${theme.fontFamily};color:${theme.textColor}}
-    .email-shell{width:100%;max-width:none;margin:0 auto;background:${theme.contentColor};padding:0}
+    body{${style({
+      margin: "0",
+      "background-color": theme.backgroundColor,
+      ...backgroundImageStyles(theme.backgroundImage),
+      "font-family": theme.fontFamily,
+      color: theme.textColor
+    })}}
+    .email-shell{${style({
+      width: "100%",
+      "max-width": "none",
+      margin: "0 auto",
+      "background-color": theme.contentColor,
+      ...backgroundImageStyles(theme.contentBackgroundImage),
+      padding: "0"
+    })}}
     .email-content{color:${theme.textColor}}
     a{color:${theme.primaryColor}}
     ${ampDeviceColorStyles(theme)}
@@ -1067,7 +1427,14 @@ const formDocument = (sourceJson) => {
   <style amp-boilerplate>body{-webkit-animation:-amp-start 8s steps(1,end) 0s 1 normal both;animation:-amp-start 8s steps(1,end) 0s 1 normal both}@-webkit-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}</style>
   <noscript><style amp-boilerplate>body{-webkit-animation:none;animation:none}</style></noscript>
   <style amp-custom>
-    body{margin:0;background:${theme.backgroundColor};padding:24px;font-family:${theme.fontFamily};color:${theme.textColor}}
+    body{${style({
+      margin: "0",
+      "background-color": theme.backgroundColor,
+      ...backgroundImageStyles(theme.backgroundImage),
+      padding: "24px",
+      "font-family": theme.fontFamily,
+      color: theme.textColor
+    })}}
     input,textarea,select{font-family:${theme.fontFamily}}
     ${ampDeviceColorStyles(theme)}
   </style>

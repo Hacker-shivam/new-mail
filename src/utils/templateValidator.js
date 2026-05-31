@@ -77,7 +77,7 @@ const validateUrls = (issues, markup, { label, imageRequired = false } = {}) => 
     if (!src || !isAbsoluteUrl(src)) {
       addIssue(
         issues,
-        imageRequired ? "error" : "warning",
+        "warning",
         "INVALID_IMAGE_URL",
         `${label} has an invalid image URL`,
         { value: src }

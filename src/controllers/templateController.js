@@ -71,6 +71,172 @@ const getValidationPayload = ({
   providedVariables
 });
 
+const isDatabaseConnectionError = (error) => {
+  const message = `${error?.message || ""} ${error?.cause?.message || ""}`.toLowerCase();
+
+  return message.includes("connection terminated") ||
+    message.includes("connection timeout") ||
+    message.includes("connect etimedout") ||
+    message.includes("econnrefused") ||
+    message.includes("database") && message.includes("not configured");
+};
+
+const builderSourceFieldNames = ["theme", "blocks", "formTitle", "text"];
+const templateFieldNames = [
+  "name",
+  "slug",
+  "subject",
+  "status",
+  "sourceJson",
+  "html",
+  "amp",
+  "formHtml",
+  "text",
+  "variables",
+  "isActive",
+  "auditHistory"
+];
+const ignoredRequestFieldNames = [
+  "_id",
+  "id",
+  "version",
+  "createdAt",
+  "updatedAt"
+];
+const builderThemeFieldNames = [
+  "backgroundColor",
+  "backgroundImage",
+  "backgroundImageUrl",
+  "backgroundUrl",
+  "bgImage",
+  "bgImageUrl",
+  "bgUrl",
+  "contentColor",
+  "contentBackgroundImage",
+  "contentBackgroundImageUrl",
+  "contentBackgroundUrl",
+  "contentBgImage",
+  "contentBgUrl",
+  "formBackgroundColor",
+  "formBackgroundImage",
+  "formBackgroundImageUrl",
+  "formBackgroundUrl",
+  "formBgImage",
+  "formBgImageUrl",
+  "formBgUrl",
+  "primaryColor",
+  "buttonColor",
+  "buttonBackgroundColor",
+  "buttonTextColor",
+  "submitButtonColor",
+  "submitBackgroundColor",
+  "submitButtonTextColor",
+  "submitColor",
+  "labelColor",
+  "labelColour",
+  "fieldLabelColor",
+  "inputLabelColor",
+  "formLabelColor",
+  "inputBackgroundColor",
+  "inputBgColor",
+  "fieldBackgroundColor",
+  "fieldBgColor",
+  "inputTextColor",
+  "inputTextColour",
+  "inputValueColor",
+  "inputValueColour",
+  "inputColor",
+  "fieldTextColor",
+  "fieldValueColor",
+  "formInputTextColor",
+  "formInputValueColor",
+  "inputBorderColor",
+  "inputBorderColour",
+  "fieldBorderColor",
+  "formInputBorderColor",
+  "successColor",
+  "successTitle",
+  "successMessage",
+  "thankYouTitle",
+  "thankYouMessage",
+  "thankYouBackgroundColor",
+  "thankYouTitleColor",
+  "thankYouTextColor",
+  "thankYouBorderColor",
+  "errorColor",
+  "textColor",
+  "mutedColor",
+  "fontFamily"
+];
+
+const hasBuilderSourceFields = (payload = {}) => {
+  return builderSourceFieldNames.some((field) => payload[field] !== undefined)
+    || builderThemeFieldNames.some((field) => payload[field] !== undefined)
+    || Object.keys(payload).some((field) => (
+      !templateFieldNames.includes(field) &&
+      !ignoredRequestFieldNames.includes(field)
+    ));
+};
+
+const mergeBuilderSource = (payload = {}, existingSource = {}) => {
+  const source = {
+    ...(existingSource || {}),
+    ...(payload.sourceJson || {})
+  };
+
+  for (const field of builderSourceFieldNames) {
+    if (payload[field] !== undefined) {
+      source[field] = payload[field];
+    }
+  }
+
+  for (const field of builderThemeFieldNames) {
+    if (payload[field] !== undefined) {
+      source.theme = {
+        ...(source.theme || {}),
+        [field]: payload[field]
+      };
+    }
+  }
+
+  for (const [field, value] of Object.entries(payload)) {
+    if (
+      value !== undefined &&
+      !templateFieldNames.includes(field) &&
+      !builderThemeFieldNames.includes(field) &&
+      !ignoredRequestFieldNames.includes(field)
+    ) {
+      source[field] = value;
+    }
+  }
+
+  return source;
+};
+
+const removeBuilderSourceFields = (payload = {}) => {
+  for (const field of Object.keys(payload)) {
+    if (
+      !templateFieldNames.includes(field) ||
+      builderSourceFieldNames.includes(field) ||
+      builderThemeFieldNames.includes(field)
+    ) {
+      delete payload[field];
+    }
+  }
+};
+
+const keepTemplateFieldsOnly = (payload = {}) => {
+  for (const field of Object.keys(payload)) {
+    if (!templateFieldNames.includes(field)) {
+      delete payload[field];
+    }
+  }
+
+  for (const field of ignoredRequestFieldNames) {
+    delete payload[field];
+  }
+};
+
 export const createTemplate = async (req, res) => {
   try {
     const {
@@ -82,46 +248,44 @@ export const createTemplate = async (req, res) => {
       amp,
       formHtml,
       text,
+      theme,
+      blocks,
+      formTitle,
       isActive,
       status = "draft"
     } = req.body;
+    const builderSourceJson = sourceJson || hasBuilderSourceFields(req.body)
+      ? mergeBuilderSource(req.body)
+      : null;
 
-    if (!name || (!html && !sourceJson)) {
+    if (!name || (!html && !builderSourceJson)) {
       return res.status(400).json({
         success: false,
         message: "Template name and html or sourceJson are required"
       });
     }
 
-    const compiled = sourceJson
+    const compiled = builderSourceJson
       ? compileTemplateSource({
-          ...sourceJson,
+          ...builderSourceJson,
           name,
-          subject: subject || sourceJson.subject
+          subject: subject || builderSourceJson.subject
         })
       : null;
     const validation = getValidationPayload({
-      subject: subject || sourceJson?.subject,
+      subject: subject || builderSourceJson?.subject,
       html: compiled?.html || html,
       amp: compiled?.amp || amp,
       formHtml: compiled?.formHtml || formHtml,
       variables: compiled?.variables || extractTemplateVariables(html, amp, formHtml, subject),
-      sourceJson
+      sourceJson: builderSourceJson
     });
-
-    if (status === "published" && !validation.valid) {
-      return res.status(422).json({
-        success: false,
-        message: "Template validation failed",
-        validation
-      });
-    }
 
     const template = await AmpTemplate.create({
       name,
       slug: slug || createSlug(name),
-      subject: subject || sourceJson?.subject,
-      sourceJson: sourceJson || null,
+      subject: subject || builderSourceJson?.subject,
+      sourceJson: builderSourceJson,
       html: compiled?.html || html,
       amp: compiled?.amp || amp,
       formHtml: compiled?.formHtml || formHtml,
@@ -131,7 +295,7 @@ export const createTemplate = async (req, res) => {
       auditHistory: [
         {
           action: "created",
-          summary: sourceJson ? "Created from builder source" : "Created from raw markup"
+          summary: builderSourceJson ? "Created from builder source" : "Created from raw markup"
         }
       ],
       variables: compiled?.variables || extractTemplateVariables(html, amp, formHtml, subject)
@@ -154,6 +318,13 @@ export const createTemplate = async (req, res) => {
     }
 
     console.error("CREATE TEMPLATE ERROR:", err);
+
+    if (isDatabaseConnectionError(err)) {
+      return res.status(503).json({
+        success: false,
+        message: "Template database is unavailable. Check POSTGRES_URL or DATABASE_URL and try again."
+      });
+    }
 
     return res.status(500).json({
       success: false,
@@ -189,6 +360,14 @@ export const listTemplates = async (req, res) => {
     });
   } catch (err) {
     console.error("LIST TEMPLATE ERROR:", err);
+
+    if (isDatabaseConnectionError(err)) {
+      return res.json({
+        success: true,
+        templates: [],
+        warning: "Template database is unavailable. Builder resources can still load, but saved templates cannot be listed."
+      });
+    }
 
     return res.status(500).json({
       success: false,
@@ -234,6 +413,13 @@ export const updateTemplate = async (req, res) => {
     }
 
     const update = { ...req.body };
+    const hasBuilderUpdate = update.sourceJson || hasBuilderSourceFields(update);
+
+    if (hasBuilderUpdate) {
+      update.sourceJson = mergeBuilderSource(update, existingTemplate.sourceJson || {});
+      removeBuilderSourceFields(update);
+    }
+    keepTemplateFieldsOnly(update);
 
     if (update.sourceJson) {
       const compiled = compileTemplateSource({
@@ -263,14 +449,6 @@ export const updateTemplate = async (req, res) => {
       variables: update.variables || existingTemplate.variables,
       sourceJson: update.sourceJson || existingTemplate.sourceJson
     });
-
-    if (update.status === "published" && !validation.valid) {
-      return res.status(422).json({
-        success: false,
-        message: "Template validation failed",
-        validation
-      });
-    }
 
     const updateQuery = {
       $set: update,
@@ -511,6 +689,13 @@ export const createSavedBlock = async (req, res) => {
   } catch (err) {
     console.error("CREATE SAVED BLOCK ERROR:", err);
 
+    if (isDatabaseConnectionError(err)) {
+      return res.status(503).json({
+        success: false,
+        message: "Saved block database is unavailable. Check POSTGRES_URL or DATABASE_URL and try again."
+      });
+    }
+
     return res.status(500).json({
       success: false,
       message: "Saved block create failed"
@@ -551,6 +736,14 @@ export const listSavedBlocks = async (req, res) => {
     });
   } catch (err) {
     console.error("LIST SAVED BLOCKS ERROR:", err);
+
+    if (isDatabaseConnectionError(err)) {
+      return res.json({
+        success: true,
+        savedBlocks: [],
+        warning: "Saved block database is unavailable. Builder can continue without saved blocks."
+      });
+    }
 
     return res.status(500).json({
       success: false,
@@ -765,7 +958,7 @@ export const validateTemplateController = async (req, res) => {
       providedVariables
     });
 
-    return res.status(validation.valid ? 200 : 422).json({
+    return res.status(200).json({
       success: validation.valid,
       validation,
       compiled

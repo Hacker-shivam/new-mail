@@ -82,7 +82,7 @@ const ampTemplate = (trackingId, subject, campaignName, campaignType) => {
                     <tr>
                       <td style="padding:0">
                         <a href="https://tn.btrkr.com/clicks/amp/..." target="_blank">
-                          <amp-img alt="Image" src="https://img.mmdocdn.com/mailmodo/image/upload/ar_946:1600,c_crop/v1756704504/editor/p/62dc8626-eafe-4c68-a935-861517fb9628/b20f300699305eadf65f9988cb020bb2_cd9fdw.jpg" width="600" height="1014" layout="responsive"></amp-img>
+                          <amp-img alt="Image" src="https://img.mmdocdn.com/mailmodo/image/upload/ar_946:1600,c_crop/v1756704504/editor/p/62dc8626-eafe-4c68-a935-861517fb9628/b20f300699305eadf65f9988cb020bb2_cd9fdw.jpg" width="600" height="850" layout="responsive"></amp-img>
                         </a>
                       </td>
                     </tr>

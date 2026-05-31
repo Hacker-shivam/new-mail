@@ -694,6 +694,36 @@ const getDeepAnalytics = async (match) => {
     ]
   };
 
+  const analyticsTasks = [
+    () => getOverview(match),
+    () => getGroupedAnalytics(match, "$campaignName", "campaignName"),
+    () => getGroupedAnalytics(match, templateLabel, "template"),
+    () => getGroupedAnalytics(match, "$campaignType", "campaignType"),
+    () => getGroupedAnalytics(match, "$senderEmail", "senderEmail"),
+    () => getTimeline(match, "hourly"),
+    () => getTimeline(match, "daily"),
+    () => getTimeline(match, "weekly"),
+    () => getBreakdown(match, "browser"),
+    () => getBreakdown(match, "device"),
+    () => getBreakdown(match, "os"),
+    () => getBreakdown(match, "country"),
+    () => getBreakdown(match, "city"),
+    () => getLinkAnalytics(match),
+    () => getFormFieldAnalytics(match),
+    () => getEngagementLists(match),
+    () => getPerformanceWindows(match),
+    () => getBotFiltering(match),
+    () => getBounceReasons(match),
+    () => getGmailQuotaUsage(match)
+  ];
+  const analyticsResults = [];
+  const analyticsConcurrency = Number(process.env.ANALYTICS_QUERY_CONCURRENCY || 3);
+
+  for (let index = 0; index < analyticsTasks.length; index += analyticsConcurrency) {
+    const batch = analyticsTasks.slice(index, index + analyticsConcurrency);
+    analyticsResults.push(...await Promise.all(batch.map((task) => task())));
+  }
+
   const [
     overview,
     campaignComparison,
@@ -715,28 +745,7 @@ const getDeepAnalytics = async (match) => {
     botFiltering,
     bounceReasons,
     gmailQuotaUsage
-  ] = await Promise.all([
-    getOverview(match),
-    getGroupedAnalytics(match, "$campaignName", "campaignName"),
-    getGroupedAnalytics(match, templateLabel, "template"),
-    getGroupedAnalytics(match, "$campaignType", "campaignType"),
-    getGroupedAnalytics(match, "$senderEmail", "senderEmail"),
-    getTimeline(match, "hourly"),
-    getTimeline(match, "daily"),
-    getTimeline(match, "weekly"),
-    getBreakdown(match, "browser"),
-    getBreakdown(match, "device"),
-    getBreakdown(match, "os"),
-    getBreakdown(match, "country"),
-    getBreakdown(match, "city"),
-    getLinkAnalytics(match),
-    getFormFieldAnalytics(match),
-    getEngagementLists(match),
-    getPerformanceWindows(match),
-    getBotFiltering(match),
-    getBounceReasons(match),
-    getGmailQuotaUsage(match)
-  ]);
+  ] = analyticsResults;
 
   return {
     overview,

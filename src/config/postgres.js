@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 export let postgres = null;
 export let isPostgresConfigured = false;
 
-const getConnectionString = () => process.env.POSTGRES_URL || process.env.DATABASE_URL;
+const getConnectionString = () => process.env.DATABASE_URL || process.env.POSTGRES_URL;
 
 const getPostgres = () => {
   if (postgres) {
@@ -28,7 +28,12 @@ const getPostgres = () => {
     connectionString,
       max: Number(process.env.POSTGRES_POOL_MAX || 10),
       idleTimeoutMillis: Number(process.env.POSTGRES_IDLE_TIMEOUT_MS || 30000),
-      connectionTimeoutMillis: Number(process.env.POSTGRES_CONNECTION_TIMEOUT_MS || 5000)
+      connectionTimeoutMillis: Number(process.env.POSTGRES_CONNECTION_TIMEOUT_MS || 15000),
+      keepAlive: true
+  });
+
+  postgres.on("error", (error) => {
+    console.error("POSTGRES POOL ERROR:", error.message);
   });
 
   return postgres;
