@@ -12,6 +12,7 @@ import {
   starterTemplateSource
 } from "../utils/templateCompiler.js";
 import { validateTemplate } from "../utils/templateValidator.js";
+import { saveTemplateAsset } from "../utils/templateAssets.js";
 
 const createSlug = (name) => {
   return name
@@ -234,6 +235,71 @@ const keepTemplateFieldsOnly = (payload = {}) => {
 
   for (const field of ignoredRequestFieldNames) {
     delete payload[field];
+  }
+};
+
+const getPublicAssetUrl = (req, publicPath) => {
+  const configuredBaseUrl = process.env.TEMPLATE_ASSET_BASE_URL || process.env.PUBLIC_BASE_URL;
+  const baseUrl = configuredBaseUrl || `${req.protocol}://${req.get("host")}`;
+
+  return `${baseUrl.replace(/\/$/, "")}${publicPath}`;
+};
+
+export const uploadTemplateAsset = async (req, res) => {
+  try {
+    const {
+      image,
+      dataUrl,
+      base64,
+      fileName,
+      name,
+      mimeType,
+      contentType,
+      category = "images"
+    } = req.body || {};
+    const imagePayload = image || dataUrl || base64;
+
+    if (!imagePayload) {
+      return res.status(400).json({
+        success: false,
+        message: "image, dataUrl or base64 is required"
+      });
+    }
+
+    const asset = await saveTemplateAsset({
+      image: imagePayload,
+      fileName: fileName || name,
+      mimeType: mimeType || contentType,
+      category
+    });
+    const url = getPublicAssetUrl(req, asset.publicPath);
+
+    return res.status(201).json({
+      success: true,
+      message: "Template asset saved",
+      asset: {
+        ...asset,
+        url
+      },
+      usage: {
+        imageBlock: {
+          type: "image",
+          props: {
+            src: url
+          }
+        },
+        socialLink: {
+          iconUrl: url
+        }
+      }
+    });
+  } catch (err) {
+    console.error("UPLOAD TEMPLATE ASSET ERROR:", err);
+
+    return res.status(400).json({
+      success: false,
+      message: err.message || "Template asset upload failed"
+    });
   }
 };
 

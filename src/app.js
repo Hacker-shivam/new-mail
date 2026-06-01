@@ -8,6 +8,7 @@ import contactRoutes from "./routes/contactRoutes.js";
 import campaignRoutes from "./routes/campaignRoutes.js";
 import formSubmissionRoutes from "./routes/formSubmissionRoutes.js";
 import { healthCheck } from "./controllers/healthController.js";
+import { templateAssetRoot } from "./utils/templateAssets.js";
 
 const app = express();
 
@@ -31,6 +32,12 @@ app.set("trust proxy", true);
 /* CUSTOM CORS */
 
 app.use(corsMiddleware);
+
+app.use("/template-assets", express.static(templateAssetRoot, {
+   fallthrough: false,
+   immutable: true,
+   maxAge: "30d"
+}));
 
 // email routes
 app.use("/api", emailRoutes);

@@ -1723,6 +1723,17 @@ export const builderBlockCatalog = [
 ];
 
 export const builderEditorConfig = {
+  assetLibrary: {
+    uploadUrl: "/api/templates/assets",
+    publicBasePath: "/template-assets",
+    categories: ["images", "social-logos"],
+    acceptedMimeTypes: ["image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml"],
+    bodyFields: {
+      image: "data URL or base64 image data",
+      fileName: "optional display filename",
+      category: "images or social"
+    }
+  },
   previewModes: [
     {
       id: "desktop",

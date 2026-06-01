@@ -18,6 +18,7 @@ import {
   restoreTemplateVersion,
   updateSavedBlock,
   updateTemplate,
+  uploadTemplateAsset,
   validateTemplateController
 } from "../controllers/templateController.js";
 
@@ -36,6 +37,8 @@ router.get("/builder/config", getBuilderEditorConfig);
 router.post("/builder/preview", previewTemplate);
 
 router.post("/builder/validate", validateTemplateController);
+
+router.post("/assets", uploadTemplateAsset);
 
 router.post("/builder/blocks", createSavedBlock);
 
