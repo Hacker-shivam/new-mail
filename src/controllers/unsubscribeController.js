@@ -47,13 +47,24 @@ export const unsubscribeHandler = async (req, res) => {
 
     console.log("UNSUBSCRIBED:", tracking);
 
-    return res.send(`
+    return res
+      .status(200)
+      .type("html")
+      .send(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Unsubscribed</title>
+  <script>
+    window.close();
 
-      <h2>
-        You have been unsubscribed successfully
-      </h2>
-
-    `);
+    if (history.length > 1) {
+      history.back();
+    }
+  </script>
+</head>
+<body></body>
+</html>`);
 
   } catch (err) {
 

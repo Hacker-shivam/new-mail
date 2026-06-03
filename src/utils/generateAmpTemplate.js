@@ -242,6 +242,194 @@ const injectStyle = (html) => {
   return `${style}${html}`;
 };
 
+const injectDeviceStyle = (html) => {
+  if (html.includes(".email-image-frame")) {
+    return html;
+  }
+
+  const style = `<style>${deviceRenderStyles}</style>`;
+
+  if (/<\/head>/i.test(html)) {
+    return html.replace(/<\/head>/i, `${style}</head>`);
+  }
+
+  return `${style}${html}`;
+};
+
+const DESKTOP_EMAIL_WIDTH = 500;
+const DESKTOP_IMAGE_WIDTH = 500;
+const SMARTPHONE_BREAKPOINT = 480;
+const deviceRenderStyles = `
+@media only screen and (max-width:${SMARTPHONE_BREAKPOINT}px) {
+  .email-shell{width:100% !important;max-width:100% !important}
+  .email-content{width:100% !important}
+  .email-image-frame{width:100% !important;max-width:100% !important}
+  .email-image{max-width:100% !important;height:auto !important}
+  img{height:auto !important}
+}`;
+
+const getTemplateWidth = (template = {}) => {
+  const width = Number(template.sourceJson?.theme?.width);
+
+  return Number.isFinite(width) && width > 0
+    ? Math.min(width, DESKTOP_EMAIL_WIDTH)
+    : DESKTOP_EMAIL_WIDTH;
+};
+
+const getTemplateImageWidth = (template = {}) => {
+  const theme = template.sourceJson?.theme || {};
+  const shellWidth = getTemplateWidth(template);
+  const width = Number(theme.bannerWidth || theme.imageWidth || theme.desktopImageWidth);
+
+  return Number.isFinite(width) && width > 0
+    ? Math.min(width, shellWidth)
+    : Math.min(shellWidth, DESKTOP_IMAGE_WIDTH);
+};
+
+const setStyleValue = (styleValue = "", property, value) => {
+  const pattern = new RegExp(`${escapeRegex(property)}\\s*:\\s*[^;"]*`, "i");
+
+  if (pattern.test(styleValue)) {
+    return styleValue.replace(pattern, `${property}:${value}`);
+  }
+
+  return `${styleValue.replace(/;?\\s*$/, "")};${property}:${value}`;
+};
+
+const constrainEmailShell = (html, template = {}) => {
+  const width = getTemplateWidth(template);
+
+  return String(html || "").replace(/<([a-z][a-z0-9-]*)([^>]*class=(["'])[^"']*\bemail-shell\b[^"']*\3[^>]*)>/gi, (match, tagName, attrs) => {
+    let nextAttrs = attrs;
+
+    if (/\swidth=(["']).*?\1/i.test(nextAttrs)) {
+      nextAttrs = nextAttrs.replace(/\swidth=(["']).*?\1/i, ` width="${width}"`);
+    } else {
+      nextAttrs += ` width="${width}"`;
+    }
+
+    if (/\sstyle=(["'])(.*?)\1/i.test(nextAttrs)) {
+      nextAttrs = nextAttrs.replace(/\sstyle=(["'])(.*?)\1/i, (_, quote, styleValue) => {
+        let nextStyle = setStyleValue(styleValue, "width", `${width}px`);
+        nextStyle = setStyleValue(nextStyle, "max-width", "100%");
+        nextStyle = setStyleValue(nextStyle, "margin", "0 auto");
+
+        return ` style=${quote}${nextStyle}${quote}`;
+      });
+    } else {
+      nextAttrs += ` style="width:${width}px;max-width:100%;margin:0 auto"`;
+    }
+
+    return `<${tagName}${nextAttrs}>`;
+  });
+};
+
+const constrainHtmlImages = (html, template = {}) => {
+  const width = getTemplateImageWidth(template);
+
+  return String(html || "").replace(/<img\b([^>]*)>/gi, (match, attrs) => {
+    if (/width=(["'])1\1/i.test(attrs) || /display\s*:\s*none/i.test(attrs)) {
+      return match;
+    }
+
+    const hasFluidWidth = /width=(["'])100%\1/i.test(attrs) || /width\s*:\s*100%/i.test(attrs);
+
+    if (!hasFluidWidth) {
+      return match;
+    }
+
+    let nextAttrs = setAttributeValue(attrs, "width", width);
+
+    if (/\sclass=(["'])(.*?)\1/i.test(nextAttrs)) {
+      nextAttrs = nextAttrs.replace(/\sclass=(["'])(.*?)\1/i, (_, quote, classValue) => {
+        return classValue.includes("email-image")
+          ? ` class=${quote}${classValue}${quote}`
+          : ` class=${quote}${classValue} email-image${quote}`;
+      });
+    } else {
+      nextAttrs += ` class="email-image"`;
+    }
+
+    if (/\sstyle=(["'])(.*?)\1/i.test(nextAttrs)) {
+      nextAttrs = nextAttrs.replace(/\sstyle=(["'])(.*?)\1/i, (_, quote, styleValue) => {
+        let nextStyle = setStyleValue(styleValue, "width", "100%");
+        nextStyle = setStyleValue(nextStyle, "max-width", `${width}px`);
+        nextStyle = setStyleValue(nextStyle, "height", "auto");
+
+        return ` style=${quote}${nextStyle}${quote}`;
+      });
+    } else {
+      nextAttrs += ` style="width:100%;max-width:${width}px;height:auto"`;
+    }
+
+    return `<img${nextAttrs}>`;
+  });
+};
+
+const setAttributeValue = (attrs = "", attribute, value) => {
+  const pattern = new RegExp(`\\s${escapeRegex(attribute)}=(["']).*?\\1`, "i");
+
+  if (pattern.test(attrs)) {
+    return attrs.replace(pattern, ` ${attribute}="${value}"`);
+  }
+
+  return `${attrs} ${attribute}="${value}"`;
+};
+
+const getAttributeValue = (attrs = "", attribute) => {
+  const match = attrs.match(new RegExp(`\\s${escapeRegex(attribute)}=(["'])(.*?)\\1`, "i"));
+
+  return match?.[2];
+};
+
+const constrainAmpImages = (amp, template = {}) => {
+  const imageWidth = getTemplateImageWidth(template);
+
+  return String(amp || "").replace(/<amp-img\b([^>]*)>/gi, (match, attrs) => {
+    const layout = getAttributeValue(attrs, "layout");
+
+    if (layout !== "responsive") {
+      return match;
+    }
+
+    const currentWidth = Number(getAttributeValue(attrs, "width")) || imageWidth;
+    const currentHeight = Number(getAttributeValue(attrs, "height")) || Math.round(imageWidth * 0.5);
+    const width = Math.min(currentWidth, imageWidth);
+    const height = currentHeight > width * 0.75
+      ? Math.round(width * 0.5)
+      : Math.round(currentHeight * (width / currentWidth));
+    let nextAttrs = setAttributeValue(attrs, "width", width);
+    nextAttrs = setAttributeValue(nextAttrs, "height", height);
+
+    if (/\sclass=(["'])(.*?)\1/i.test(nextAttrs)) {
+      nextAttrs = nextAttrs.replace(/\sclass=(["'])(.*?)\1/i, (_, quote, classValue) => {
+        return classValue.includes("email-amp-image")
+          ? ` class=${quote}${classValue}${quote}`
+          : ` class=${quote}${classValue} email-amp-image${quote}`;
+      });
+    } else {
+      nextAttrs += ` class="email-amp-image"`;
+    }
+
+    return `<amp-img${nextAttrs}>`;
+  });
+};
+
+export const normalizeStoredTemplateMarkup = ({
+  html,
+  amp,
+  template = {}
+} = {}) => ({
+  html: constrainHtmlImages(
+    constrainEmailShell(html, template),
+    template
+  ),
+  amp: constrainAmpImages(
+    constrainEmailShell(amp, template),
+    template
+  )
+});
+
 const hasTrackingToken = (template, tokenName, url) => {
   return (
     new RegExp(`\\{\\{\\s*${escapeRegex(tokenName)}\\s*\\}\\}`, "i").test(template) ||
@@ -250,7 +438,7 @@ const hasTrackingToken = (template, tokenName, url) => {
 };
 
 const addHtmlTracking = (html, originalTemplate, urls) => {
-  let nextHtml = injectStyle(html);
+  let nextHtml = injectDeviceStyle(injectStyle(html));
 
   if (!hasTrackingToken(originalTemplate, "openPixelHtml", urls.openHtmlUrl)) {
     nextHtml = injectBeforeBodyEnd(
@@ -414,9 +602,18 @@ export const renderTrackedTemplate = ({
     templateSlug: template.slug
   };
 
-  const htmlWithValues = renderTemplateExpressions(template.html, values);
+  const htmlWithValues = constrainHtmlImages(
+    constrainEmailShell(
+      renderTemplateExpressions(template.html, values),
+      template
+    ),
+    template
+  );
   const ampWithValues = template.amp
-    ? renderTemplateExpressions(template.amp, values)
+    ? constrainAmpImages(
+        constrainEmailShell(renderTemplateExpressions(template.amp, values), template),
+        template
+      )
     : "";
 
   const context = {

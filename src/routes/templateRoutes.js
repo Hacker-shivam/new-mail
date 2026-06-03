@@ -10,6 +10,7 @@ import {
   getSavedBlock,
   getStarterTemplateSource,
   getTemplate,
+  getTemplatePreview,
   getTemplateVersion,
   listSavedBlocks,
   listTemplates,
@@ -49,6 +50,8 @@ router.get("/builder/blocks/:blockId", getSavedBlock);
 router.put("/builder/blocks/:blockId", updateSavedBlock);
 
 router.delete("/builder/blocks/:blockId", archiveSavedBlock);
+
+router.get("/:id/preview", getTemplatePreview);
 
 router.get("/:id", getTemplate);
 

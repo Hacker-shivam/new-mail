@@ -183,5 +183,7 @@ CREATE INDEX IF NOT EXISTS tracking_events_template_event_created_idx ON trackin
 CREATE INDEX IF NOT EXISTS bulk_email_campaigns_status_created_idx ON bulk_email_campaigns(status, created_at);
 CREATE INDEX IF NOT EXISTS bulk_email_recipients_campaign_status_created_idx ON bulk_email_recipients(campaign_id, status, created_at);
 CREATE INDEX IF NOT EXISTS bulk_email_recipients_email_status_idx ON bulk_email_recipients(email, status);
+CREATE INDEX IF NOT EXISTS amp_templates_created_at_idx ON amp_templates(created_at DESC);
+CREATE INDEX IF NOT EXISTS amp_templates_status_created_at_idx ON amp_templates(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS template_versions_template_version_idx ON template_versions(template_id, version DESC);
 CREATE INDEX IF NOT EXISTS saved_blocks_type_category_created_idx ON saved_blocks(type, category, created_at DESC);

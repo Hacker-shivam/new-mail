@@ -1,6 +1,7 @@
 
 const htmlTemplate = (trackingId, subject, campaignName, campaignType) => {
   const baseUrl = process.env.API_URL;
+  const emailShellWidth = 500;
 
   return `
 <!DOCTYPE html>
@@ -209,10 +210,10 @@ figure.table table th {
         @media only screen and (max-width:480px){table.mj-full-width-mobile{width:100%!important}td.mj-full-width-mobile{width:auto!important}.html-freeze-block-img .mj-full-width-mobile img{height:auto!important}.html-custom-block-img .mj-full-width-mobile img{height:auto!important}}
     </style>
     <style type="text/css">
-        @media only screen and (min-width:480px){.mj-column-per-100{width:100%!important;max-width:100%}.mj-column-per-10{width:10%!important;max-width:10%}.mj-column-per-65{width:65%!important;max-width:65%}.mj-column-per-34{width:34%!important;max-width:34%!important}.mj-column-per-66{width:66%!important;max-width:66%!important}.mj-column-per-25{width:25%!important;max-width:25%}.mj-column-per-100{width:100%;max-width:100%}.mj-column-per-33-33{width:33.33%;max-width:33.33%}.mj-column-per-33-34{width:33.34%;max-width:33.34%}}
+        @media only screen and (min-width:480px){.mj-column-per-100{width:100%!important;max-width:100%}.mj-column-per-10{width:10%!important;max-width:10%}.mj-column-per-65{width:65%!important;max-width:65%}.mj-column-per-34{width:34%!important;max-width:34%!important}.mj-column-per-66{width:66%!important;max-width:66%!important}.mj-column-per-25{width:25%!important;max-width:25%}.mj-column-per-100{width:100%;max-width:100%}.mj-column-per-33-33{width:33.33%;max-width:33.33%}.mj-column-per-33-34{width:33.34%;max-width:33.34%}.email-shell{width:${emailShellWidth}px!important;max-width:100%!important}.email-image-frame{max-width:${emailShellWidth}px!important}}
     </style>
     <style type="text/css">
-        @media (max-width:480px){.amp-html-block .brand-library-widget h1,.bl-typography-block-wrapper h1{font-size:26px}.amp-html-block .brand-library-widget h2,.bl-typography-block-wrapper h2{font-size:22px}.amp-html-block .brand-library-widget h3,.bl-typography-block-wrapper h3{font-size:18px}.amp-html-block .brand-library-widget h4,.bl-typography-block-wrapper h4{font-size:16px}.amp-html-block .brand-library-widget ol li,.amp-html-block .brand-library-widget p,.amp-html-block .brand-library-widget ul li,.bl-typography-block-wrapper ol li,.bl-typography-block-wrapper p,.bl-typography-block-wrapper ul li{font-size:14px!important}.brand-library-widget p{font-size:14px!important}.amp-btn-wrapper p{font-size:inherit}}
+        @media (max-width:480px){.amp-html-block .brand-library-widget h1,.bl-typography-block-wrapper h1{font-size:26px}.amp-html-block .brand-library-widget h2,.bl-typography-block-wrapper h2{font-size:22px}.amp-html-block .brand-library-widget h3,.bl-typography-block-wrapper h3{font-size:18px}.amp-html-block .brand-library-widget h4,.bl-typography-block-wrapper h4{font-size:16px}.amp-html-block .brand-library-widget ol li,.amp-html-block .brand-library-widget p,.amp-html-block .brand-library-widget ul li,.bl-typography-block-wrapper ol li,.bl-typography-block-wrapper p,.bl-typography-block-wrapper ul li{font-size:14px!important}.brand-library-widget p{font-size:14px!important}.amp-btn-wrapper p{font-size:inherit}.email-shell{width:100%!important;max-width:100%!important}.email-image-frame{max-width:100%!important}}
     </style>
     <style type="text/css">
         @media screen and (max-width:480px){.hide-on-desktop,.sf-hide-on-desktop{display:revert}.hide-on-mobile,.sf-hide-on-mobile{display:none}}
@@ -227,14 +228,14 @@ figure.table table th {
     <div
     class="body-wrapper disable-heading-font-weight" style="background-color:#f8fafc">
         <!--[if mso | IE]><table align="center" border="0" cellpadding="0" cellspacing="0" class="" role="presentation" style="width:100%;" width="100%" bgcolor="#FFFFFF" ><tr><td style="line-height:0px;font-size:0px;mso-line-height-rule:exactly;"><![endif]-->
-        <div style="background:#fff;background-color:#fff;margin:0 auto;border-radius:0;width:100%;max-width:none">
-            <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="background:#fff;background-color:#fff;width:100%;border-radius:0">
+        <div class="email-shell" style="background:#fff;background-color:#fff;margin:0 auto;border-radius:0;width:${emailShellWidth}px;max-width:100%">
+            <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" width="${emailShellWidth}" style="background:#fff;background-color:#fff;width:100%;max-width:${emailShellWidth}px;border-radius:0">
                 <tbody>
                     <tr>
                         <td style="border:0 solid transparent;direction:ltr;font-size:0;padding:0;padding-bottom:0;padding-left:0;padding-right:0;padding-top:0;text-align:center">
                             <!--[if mso | IE]><table role="presentation" border="0" cellpadding="0" cellspacing="0"><tr><td class="bl-typography-block-wrapper-outlook -outlook bg-blocku4q3y1-outlook" width="100%" ><table align="center" border="0" cellpadding="0" cellspacing="0" class="bl-typography-block-wrapper-outlook -outlook bg-blocku4q3y1-outlook" role="presentation" style="width:100%;" width="100%" bgcolor="transparent" ><tr><td style="line-height:0px;font-size:0px;mso-line-height-rule:exactly;"><![endif]-->
-                            <div class="bl-typography-block-wrapper bg-blocku4q3y1" style="background:0 0;background-color:transparent;margin:0 auto;border-radius:0;width:100%;max-width:none">
-                                <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="background:0 0;background-color:transparent;width:100%;border-radius:0">
+                            <div class="bl-typography-block-wrapper bg-blocku4q3y1 email-image-frame" style="background:0 0;background-color:transparent;margin:0 auto;border-radius:0;width:100%;max-width:${emailShellWidth}px">
+                                <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" width="${emailShellWidth}" style="background:0 0;background-color:transparent;width:100%;max-width:${emailShellWidth}px;border-radius:0">
                                     <tbody>
                                         <tr>
                                             <td style="border:0 solid transparent;direction:ltr;font-size:0;padding:20px 0;padding-bottom:0;padding-left:0;padding-right:0;padding-top:0;text-align:center">
@@ -254,8 +255,8 @@ figure.table table th {
                                                                                                 <td style="width:100%" class="mj-full-width-mobile">
                                                                                                     <a href="https://tn.btrkr.com/clicks/html/a6548890-d0d2-5a83-9922-c092e3102374/5a1d504a-f747-449c-b739-021eca44c63b/88ac0eef-9649-5e2a-b67a-634c87a9c88e?urlChildId=3Db60acc15-b246-5f88-b38f-c7ece71b9896&templateId=3D5e0488ba-5f90-4794-8b11-43f4043cf2ad"
                                                                                                     target="_blank" data-url-id="b60acc15-b246-5f88-b38f-c7ece71b9896"><img alt="Image" src="https://img.mmdocdn.com/mailmodo/image/upload/ar_946:1600,c_crop/v1756704504/editor/p/62dc8626-eafe-4c68-a935-861517fb9628/b20f300699305eadf65f9988cb020bb2_cd9fdw.jpg"
-                                                                                                        style="border:0 solid transparent;border-radius:0;display:block;outline:0;text-decoration:none;height:auto;width:100%;max-width:100%;font-size:13px"
-                                                                                                        width="100%" height="auto"></a>
+                                                                                                        style="border:0 solid transparent;border-radius:0;display:block;outline:0;text-decoration:none;height:auto;width:100%;max-width:${emailShellWidth}px;font-size:13px"
+                                                                                                        width="${emailShellWidth}" height="auto"></a>
                                                                                                 </td>
                                                                                             </tr>
                                                                                         </tbody>

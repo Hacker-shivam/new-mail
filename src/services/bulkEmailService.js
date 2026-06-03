@@ -550,6 +550,11 @@ const claimRecipients = async (campaignId, limit) => {
 };
 
 const markRecipientSkipped = async (recipientId, reason) => {
+  console.log("BULK EMAIL RECIPIENT SKIPPED:", {
+    recipientId,
+    reason
+  });
+
   await BulkEmailRecipient.findByIdAndUpdate(recipientId, {
     $set: {
       status: "skipped",
@@ -570,6 +575,19 @@ const markRecipientFailed = async (recipientId, error) => {
     ? new Date(Date.now() + getRetryDelay(attempts))
     : null;
 
+  console.error("BULK EMAIL RECIPIENT FAILED:", {
+    recipientId,
+    email: recipient?.email,
+    attempts,
+    retryable,
+    shouldRetry,
+    nextAttemptAt,
+    code: getErrorCode(error),
+    message: error?.message,
+    responseCode: error?.responseCode,
+    response: error?.response
+  });
+
   await BulkEmailRecipient.findByIdAndUpdate(recipientId, {
     $set: {
       status: shouldRetry ? "pending" : "failed",
@@ -585,6 +603,13 @@ const markRecipientFailed = async (recipientId, error) => {
 };
 
 const markRecipientSent = async (recipientId, info) => {
+  console.log("BULK EMAIL RECIPIENT SENT:", {
+    recipientId,
+    messageId: info?.messageId,
+    accepted: info?.accepted,
+    rejected: info?.rejected
+  });
+
   await BulkEmailRecipient.findByIdAndUpdate(recipientId, {
     $set: {
       status: "sent",
@@ -655,6 +680,16 @@ const refreshCampaignCounts = async (campaignId) => {
 
 const processRecipient = async (recipient, campaign) => {
   try {
+    console.log("BULK EMAIL PROCESS RECIPIENT START:", {
+      campaignId: campaign._id,
+      recipientId: recipient._id,
+      email: recipient.email,
+      attempts: recipient.attempts,
+      templateId: campaign.templateId || null,
+      templateSlug: campaign.templateSlug || null,
+      senderEmail: campaign.senderEmail || process.env.SMTP_FROM || null
+    });
+
     const info = await sendTrackingEmail(
       recipient.email,
       campaign.subject,
@@ -686,8 +721,26 @@ const processRecipient = async (recipient, campaign) => {
 
 const processCampaign = async (campaign) => {
   if (!campaign || campaign.status === "paused" || campaign.status === "completed") {
+    console.log("BULK EMAIL CAMPAIGN SKIP:", {
+      campaignId: campaign?._id || null,
+      status: campaign?.status || null
+    });
     return;
   }
+
+  console.log("BULK EMAIL CAMPAIGN START:", {
+    campaignId: campaign._id,
+    status: campaign.status,
+    campaignName: campaign.campaignName,
+    totalRecipients: campaign.totalRecipients,
+    sent: campaign.sent,
+    failed: campaign.failed,
+    skipped: campaign.skipped,
+    templateId: campaign.templateId || null,
+    templateSlug: campaign.templateSlug || null,
+    senderEmail: campaign.senderEmail || process.env.SMTP_FROM || null,
+    scheduledAt: campaign.scheduledAt || null
+  });
 
   await releaseStaleLocks(campaign._id);
 
@@ -700,7 +753,16 @@ const processCampaign = async (campaign) => {
 
   const capacity = await getRemainingDailyCapacity(campaign.senderEmail || process.env.SMTP_FROM);
 
+  console.log("BULK EMAIL CAMPAIGN CAPACITY:", {
+    campaignId: campaign._id,
+    capacity
+  });
+
   if (!capacity) {
+    console.error("BULK EMAIL CAMPAIGN PAUSED DAILY LIMIT:", {
+      campaignId: campaign._id
+    });
+
     await BulkEmailCampaign.findByIdAndUpdate(campaign._id, {
       $set: {
         status: "paused",
@@ -713,8 +775,18 @@ const processCampaign = async (campaign) => {
   const batchSize = Math.min(BULK_EMAIL_BATCH_SIZE, capacity);
   const recipients = await claimRecipients(campaign._id, batchSize);
 
+  console.log("BULK EMAIL CAMPAIGN CLAIMED RECIPIENTS:", {
+    campaignId: campaign._id,
+    batchSize,
+    claimed: recipients.length
+  });
+
   if (!recipients.length) {
-    await refreshCampaignCounts(campaign._id);
+    const counts = await refreshCampaignCounts(campaign._id);
+    console.log("BULK EMAIL CAMPAIGN NO RECIPIENTS:", {
+      campaignId: campaign._id,
+      counts
+    });
     return;
   }
 
@@ -732,13 +804,25 @@ const processCampaign = async (campaign) => {
     }
   }
 
+  console.log("BULK EMAIL CAMPAIGN SENDABLE RECIPIENTS:", {
+    campaignId: campaign._id,
+    claimed: recipients.length,
+    suppressed: recipients.length - sendableRecipients.length,
+    sendable: sendableRecipients.length,
+    concurrency: BULK_EMAIL_SEND_CONCURRENCY
+  });
+
   await runWithConcurrency(
     sendableRecipients,
     BULK_EMAIL_SEND_CONCURRENCY,
     (recipient) => processRecipient(recipient, campaign)
   );
 
-  await refreshCampaignCounts(campaign._id);
+  const counts = await refreshCampaignCounts(campaign._id);
+  console.log("BULK EMAIL CAMPAIGN BATCH COMPLETE:", {
+    campaignId: campaign._id,
+    counts
+  });
   await sleep(BULK_EMAIL_BATCH_DELAY_MS);
 
   const latestCampaign = await BulkEmailCampaign.findById(campaign._id).lean();
@@ -748,6 +832,11 @@ const processCampaign = async (campaign) => {
   });
 
   if (latestCampaign?.status === "running" && pendingCount > 0) {
+    console.log("BULK EMAIL CAMPAIGN REQUEUE:", {
+      campaignId: campaign._id,
+      pendingCount
+    });
+
     await BulkEmailCampaign.findByIdAndUpdate(campaign._id, {
       $set: {
         status: "pending"
@@ -786,6 +875,12 @@ const processNextCampaigns = async () => {
       .limit(BULK_EMAIL_POLL_LIMIT)
       .lean();
 
+    console.log("BULK EMAIL WORKER POLL:", {
+      count: campaigns.length,
+      ids: campaigns.map((campaign) => campaign._id),
+      statuses: campaigns.map((campaign) => campaign.status)
+    });
+
     for (const campaign of campaigns) {
       if (stopRequested) {
         break;
@@ -794,7 +889,11 @@ const processNextCampaigns = async () => {
       await processCampaign(campaign);
     }
   } catch (error) {
-    console.error("BULK EMAIL WORKER ERROR:", error);
+    console.error("BULK EMAIL WORKER ERROR:", {
+      code: error?.code,
+      message: error?.message,
+      stack: error?.stack
+    });
   } finally {
     workerRunning = false;
   }

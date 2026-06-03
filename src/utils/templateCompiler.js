@@ -24,10 +24,23 @@ const numberFrom = (...values) => {
   return null;
 };
 
-const getImageSize = (props = {}) => {
+const DESKTOP_EMAIL_WIDTH = 500;
+const DESKTOP_IMAGE_WIDTH = 500;
+const SMARTPHONE_BREAKPOINT = 480;
+
+const getImageSize = (props = {}, theme = {}) => {
+  const shellWidth = Math.min(Number(theme.width) || DESKTOP_EMAIL_WIDTH, DESKTOP_EMAIL_WIDTH);
+  const defaultDesktopImageWidth = Math.min(shellWidth, DESKTOP_IMAGE_WIDTH);
+  const width = Math.min(numberFrom(props.width, props.imageWidth, props.bannerWidth, defaultDesktopImageWidth) || defaultDesktopImageWidth, shellWidth);
+  const requestedHeight = numberFrom(props.height, props.imageHeight, props.bannerHeight);
+  const maxHeight = Math.round(width * 0.75);
+  const height = requestedHeight
+    ? Math.min(requestedHeight, maxHeight)
+    : Math.round(width * 0.5);
+
   return {
-    width: 600,
-    height: 850
+    width,
+    height
   };
 };
 
@@ -44,6 +57,33 @@ const getBackgroundImage = (source = {}) => firstValue(
   source.bgUrl,
   source.image
 );
+
+const enumValue = (value, allowed, fallback) => {
+  return allowed.includes(value) ? value : fallback;
+};
+
+const isSafeCssImageUrl = (value) => {
+  const url = String(value || "").trim();
+
+  if (!url) {
+    return false;
+  }
+
+  if (/\{\{[^}]+\}\}/.test(url)) {
+    return true;
+  }
+
+  if (url.startsWith("/template-assets/")) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+};
 
 const getButtonBackgroundColor = (source = {}) => firstValue(
   source.buttonBackgroundColor,
@@ -64,9 +104,13 @@ const getButtonTextColor = (source = {}) => firstValue(
 );
 
 const getTheme = (sourceJson = {}) => ({
-  width: sourceJson.theme?.width || 600,
+  width: Math.min(Number(sourceJson.theme?.width) || DESKTOP_EMAIL_WIDTH, DESKTOP_EMAIL_WIDTH),
   backgroundColor: sourceJson.theme?.backgroundColor || "#f8fafc",
   backgroundImage: getBackgroundImage(sourceJson.theme) || "",
+  backgroundOverlayColor: sourceJson.theme?.backgroundOverlayColor || "",
+  backgroundImageSize: enumValue(sourceJson.theme?.backgroundImageSize, ["cover", "contain", "auto"], "cover"),
+  backgroundImagePosition: enumValue(sourceJson.theme?.backgroundImagePosition, ["center", "top", "bottom", "left", "right"], "center"),
+  backgroundImageRepeat: enumValue(sourceJson.theme?.backgroundImageRepeat, ["no-repeat", "repeat", "repeat-x", "repeat-y"], "no-repeat"),
   contentColor: sourceJson.theme?.contentColor || "#ffffff",
   contentBackgroundImage: firstValue(
     sourceJson.theme?.contentBackgroundImage,
@@ -168,25 +212,47 @@ const style = (values) => {
 const cssUrl = (value) => {
   const url = String(value || "").trim();
 
+  if (!isSafeCssImageUrl(url)) {
+    return "";
+  }
+
   return url ? `url('${url.replace(/'/g, "%27")}')` : "";
 };
 
 const backgroundImageStyles = (image, {
   size = "cover",
   position = "center",
-  repeat = "no-repeat"
+  repeat = "no-repeat",
+  overlayColor = ""
 } = {}) => {
   if (!image) {
     return {};
   }
 
+  const imageUrl = cssUrl(image);
+
+  if (!imageUrl) {
+    return {};
+  }
+
+  const backgroundImage = overlayColor
+    ? `linear-gradient(${overlayColor}, ${overlayColor}), ${imageUrl}`
+    : imageUrl;
+
   return {
-    "background-image": cssUrl(image),
+    "background-image": backgroundImage,
     "background-size": size,
     "background-position": position,
     "background-repeat": repeat
   };
 };
+
+const themeBackgroundImageStyles = (theme) => backgroundImageStyles(theme.backgroundImage, {
+  size: theme.backgroundImageSize,
+  position: theme.backgroundImagePosition,
+  repeat: theme.backgroundImageRepeat,
+  overlayColor: theme.backgroundOverlayColor
+});
 
 const getVisibilityToken = (visibility) => {
   if (!visibility?.field) {
@@ -229,31 +295,32 @@ const renderText = (block, theme, tag = "p") => {
   })}">${text}</${htmlTag}>`;
 };
 
-const renderImageHtml = (block) => {
+const renderImageHtml = (block, theme) => {
   const props = block.props || {};
   const padding = "0";
   const margin = "0";
-  const image = `<img src="${escapeAttr(props.src)}" alt="${escapeAttr(props.alt || "")}" width="100%" style="${style({
+  const { width } = getImageSize(props, theme);
+  const image = `<img class="email-image" src="${escapeAttr(props.src)}" alt="${escapeAttr(props.alt || "")}" width="${width}" style="${style({
     display: "block",
     border: "0",
     width: "100%",
-    "max-width": "100%",
+    "max-width": `${width}px`,
     height: "auto",
     margin,
     "border-radius": px(props.radius, "0")
   })}" />`;
 
   return props.href
-    ? `<table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="width:100%;min-width:100%;margin:0;padding:0;border-collapse:collapse"><tr><td style="padding:${padding};margin:0"><a href="${escapeAttr(props.href)}" target="_blank" style="display:block;margin:0;padding:0">${image}</a></td></tr></table>`
-    : `<table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="width:100%;min-width:100%;margin:0;padding:0;border-collapse:collapse"><tr><td style="padding:${padding};margin:0">${image}</td></tr></table>`;
+    ? `<table class="email-image-frame" role="presentation" width="${width}" border="0" cellpadding="0" cellspacing="0" style="width:100%;max-width:${width}px;margin:0 auto;padding:0;border-collapse:collapse"><tr><td style="padding:${padding};margin:0"><a href="${escapeAttr(props.href)}" target="_blank" style="display:block;margin:0;padding:0">${image}</a></td></tr></table>`
+    : `<table class="email-image-frame" role="presentation" width="${width}" border="0" cellpadding="0" cellspacing="0" style="width:100%;max-width:${width}px;margin:0 auto;padding:0;border-collapse:collapse"><tr><td style="padding:${padding};margin:0">${image}</td></tr></table>`;
 };
 
-const renderImageAmp = (block) => {
+const renderImageAmp = (block, theme) => {
   const props = block.props || {};
   const padding = "0";
-  const { width, height } = getImageSize(props);
+  const { width, height } = getImageSize(props, theme);
   const textAlign = "left";
-  const image = `<div style="padding:${padding};text-align:${textAlign}"><amp-img src="${escapeAttr(props.src)}" alt="${escapeAttr(props.alt || "")}" width="${width}" height="${height}" layout="responsive"></amp-img></div>`;
+  const image = `<div class="email-amp-image" style="padding:${padding};text-align:${textAlign};max-width:${width}px;margin:0 auto"><amp-img src="${escapeAttr(props.src)}" alt="${escapeAttr(props.alt || "")}" width="${width}" height="${height}" layout="responsive"></amp-img></div>`;
 
   return props.href
     ? `<a href="${escapeAttr(props.href)}" target="_blank">${image}</a>`
@@ -1169,7 +1236,7 @@ const renderBlockInner = (block, target, theme) => {
     case "text":
       return renderText(block, theme, "p");
     case "image":
-      return target === "amp" ? renderImageAmp(block) : renderImageHtml(block);
+      return target === "amp" ? renderImageAmp(block, theme) : renderImageHtml(block, theme);
     case "button":
       return renderButton(block, theme);
     case "form":
@@ -1283,23 +1350,32 @@ const colorSchemeMeta = (theme) => {
 };
 
 const htmlDeviceColorStyles = (theme) => {
-  if (!theme.followDeviceColorScheme) {
-    return "";
-  }
-
   return `<style>
+    @media only screen and (max-width:${SMARTPHONE_BREAKPOINT}px) {
+      .email-shell{width:100% !important;max-width:100% !important}
+      .email-content{width:100% !important}
+      .email-image-frame{width:100% !important;max-width:100% !important}
+      .email-image{max-width:100% !important;height:auto !important}
+      img{height:auto !important}
+    }
+    ${theme.followDeviceColorScheme ? `
     :root{color-scheme:light dark;supported-color-schemes:light dark}
     @media (prefers-color-scheme: dark) {
       body,.email-bg{background:${theme.darkBackgroundColor} !important}
       .email-shell,.email-content{background:${theme.darkContentColor} !important}
       .email-content{color:${theme.darkTextColor} !important}
       .email-muted{color:${theme.darkMutedColor} !important}
-    }
+    }` : ""}
   </style>`;
 };
 
 const ampDeviceColorStyles = (theme) => {
-  return "";
+  return `
+    @media only screen and (max-width:${SMARTPHONE_BREAKPOINT}px) {
+      .email-shell{width:100% !important;max-width:100% !important}
+      .email-content{width:100% !important}
+      .email-amp-image{max-width:100% !important}
+    }`;
 };
 
 const interactiveBlockTypes = new Set([
@@ -1328,22 +1404,23 @@ const htmlDocument = (sourceJson) => {
   <title>${escapeHtml(sourceJson.subject || sourceJson.name || "Email")}</title>
   ${htmlDeviceColorStyles(theme)}
 </head>
-<body class="email-bg" style="${style({
+<body class="email-bg email-desktop-body" style="${style({
   margin: "0",
   padding: "0",
   "background-color": theme.backgroundColor,
-  ...backgroundImageStyles(theme.backgroundImage)
+  ...themeBackgroundImageStyles(theme)
 })}">
   <div style="display:none;max-height:0;overflow:hidden;color:transparent">{{preheader}}</div>
   <table class="email-bg" role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="${style({
     "background-color": theme.backgroundColor,
-    ...backgroundImageStyles(theme.backgroundImage)
+    ...themeBackgroundImageStyles(theme)
   })}">
     <tr>
       <td align="center" style="padding:0">
-        <table class="email-shell" role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="${style({
-          width: "100%",
-          "max-width": "none",
+        <table class="email-shell" role="presentation" width="${theme.width || 640}" border="0" cellpadding="0" cellspacing="0" style="${style({
+          width: `${theme.width || 640}px`,
+          "max-width": "100%",
+          margin: "0 auto",
           "background-color": theme.contentColor,
           ...backgroundImageStyles(theme.contentBackgroundImage)
         })}">
@@ -1381,13 +1458,13 @@ const ampDocument = (sourceJson) => {
     body{${style({
       margin: "0",
       "background-color": theme.backgroundColor,
-      ...backgroundImageStyles(theme.backgroundImage),
+      ...themeBackgroundImageStyles(theme),
       "font-family": theme.fontFamily,
       color: theme.textColor
     })}}
     .email-shell{${style({
-      width: "100%",
-      "max-width": "none",
+      width: `${theme.width || 640}px`,
+      "max-width": "100%",
       margin: "0 auto",
       "background-color": theme.contentColor,
       ...backgroundImageStyles(theme.contentBackgroundImage),
@@ -1398,7 +1475,7 @@ const ampDocument = (sourceJson) => {
     ${ampDeviceColorStyles(theme)}
   </style>
 </head>
-<body class="email-bg">
+<body class="email-bg email-desktop-body">
   <div class="email-shell email-content">
     ${body}
   </div>
@@ -1430,7 +1507,7 @@ const formDocument = (sourceJson) => {
     body{${style({
       margin: "0",
       "background-color": theme.backgroundColor,
-      ...backgroundImageStyles(theme.backgroundImage),
+      ...themeBackgroundImageStyles(theme),
       padding: "24px",
       "font-family": theme.fontFamily,
       color: theme.textColor

@@ -32,6 +32,18 @@ async (req, res) => {
          replyToEmail
       } = req.body;
 
+      console.log("SEND EMAIL REQUEST:", {
+         email: email || null,
+         subject: subject || null,
+         campaignName: campaignName || null,
+         campaignType: campaignType || null,
+         templateId: templateId || null,
+         templateSlug: templateSlug || null,
+         senderEmail: senderEmail || null,
+         replyTo: replyTo || replyToEmail || null,
+         variableKeys: variables ? Object.keys(variables) : []
+      });
+
       if (!email) {
 
          return res.status(400).json({
@@ -55,6 +67,12 @@ async (req, res) => {
          }
       );
 
+      console.log("SEND EMAIL RESPONSE OK:", {
+         email,
+         templateId: templateId || null,
+         templateSlug: templateSlug || null
+      });
+
       res.json({
          success: true,
          message: "Tracking email sent"
@@ -62,7 +80,13 @@ async (req, res) => {
 
    } catch (error) {
 
-      console.log(error);
+      console.error("SEND EMAIL CONTROLLER ERROR:", {
+         code: error?.code,
+         message: error?.message,
+         responseCode: error?.responseCode,
+         response: error?.response,
+         stack: error?.stack
+      });
 
       if (error instanceof SuppressedEmailError || error?.code === "EMAIL_SUPPRESSED") {
          return res.status(200).json({
@@ -100,11 +124,29 @@ export const createBulkEmailController = async (req, res) => {
       scheduledAt
     } = req.body;
 
+    console.log("BULK EMAIL CREATE REQUEST:", {
+      recipientsCount: Array.isArray(recipients) ? recipients.length : 0,
+      emailsCount: Array.isArray(emails) ? emails.length : 0,
+      listId: listId || null,
+      hasSegment: Boolean(segment),
+      subject: subject || null,
+      campaignName: campaignName || null,
+      campaignType: campaignType || null,
+      templateId: templateId || null,
+      templateSlug: templateSlug || null,
+      senderEmail: senderEmail || null,
+      scheduledAt: scheduledAt || null
+    });
+
     const resolvedRecipients = await resolveRecipients({
       recipients,
       emails,
       listId,
       segment
+    });
+
+    console.log("BULK EMAIL RECIPIENTS RESOLVED:", {
+      count: resolvedRecipients.length
     });
 
     const campaign = await createBulkEmailCampaign({
@@ -126,7 +168,11 @@ export const createBulkEmailController = async (req, res) => {
       campaign
     });
   } catch (error) {
-    console.error("BULK EMAIL CREATE ERROR:", error);
+    console.error("BULK EMAIL CREATE ERROR:", {
+      code: error?.code,
+      message: error?.message,
+      stack: error?.stack
+    });
 
     return res.status(400).json({
       success: false,
@@ -176,7 +222,27 @@ export const createBulkEmailImportController = async (req, res) => {
       tags
     } = req.body;
 
+    console.log("BULK EMAIL IMPORT SEND REQUEST:", {
+      subject: subject || null,
+      campaignName: campaignName || null,
+      campaignType: campaignType || null,
+      templateId: templateId || null,
+      templateSlug: templateSlug || null,
+      senderEmail: senderEmail || null,
+      scheduledAt: scheduledAt || null,
+      saveContacts: Boolean(saveContacts),
+      listId: listId || null,
+      sourceKeys: Object.keys(req.body || {})
+    });
+
     const importResult = await importRecipientsFromSource(req.body || {});
+
+    console.log("BULK EMAIL IMPORT RESULT:", {
+      source: importResult.source,
+      recipients: importResult.recipients.length,
+      failed: importResult.failed,
+      duplicates: importResult.duplicates
+    });
 
     if (!importResult.recipients.length) {
       return res.status(400).json({

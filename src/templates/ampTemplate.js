@@ -1,5 +1,7 @@
 const ampTemplate = (trackingId, subject, campaignName, campaignType) => {
   const baseUrl = process.env.API_URL; 
+  const emailShellWidth = 500;
+  const imageHeight = 375;
 
   return `<!DOCTYPE html>
 <html ⚡4email data-css-strict>
@@ -10,6 +12,8 @@ const ampTemplate = (trackingId, subject, campaignName, campaignType) => {
   <style amp-custom>
     @media only screen and (min-width:480px){.mj-column-per-100{width:100%;max-width:100%}}
     .moz-text-html .mj-column-per-100{width:100%;max-width:100%}
+    .email-shell{width:${emailShellWidth}px;max-width:100%;margin:0 auto;background:#fff}
+    .email-image-frame{max-width:${emailShellWidth}px;margin:0 auto}
     @media only screen and (max-width:480px){table.mj-full-width-mobile{width:100%}td.mj-full-width-mobile{width:auto}td.mj-full-width-mobile img{width:100%}}
     .body-wrapper.disable-heading-font-weight h1,.body-wrapper.disable-heading-font-weight h2,.body-wrapper.disable-heading-font-weight h3,.body-wrapper.disable-heading-font-weight h4,.body-wrapper.disable-heading-font-weight h5,.body-wrapper.disable-heading-font-weight h6{font-weight:400}
     @media only screen and (min-width:480px){.body-wrapper{padding-top:12px}}
@@ -63,7 +67,7 @@ const ampTemplate = (trackingId, subject, campaignName, campaignType) => {
     .formjh3103-wrapper .overall{background-color:transparent;width:100%;border:3px solid #652394;border-radius:10px;font-family:Helvetica;padding:24px 32px;color:#000;margin:0 auto;box-sizing:border-box}
     .button-elementaoshh6{background-color:#178218;color:#fff;border-radius:600px;padding:10px 16px;margin:20px 10px 20px 0;font-size:16px;font-family:Helvetica;border:none;cursor:pointer}
     .hide-on-desktop{display:none}
-    @media screen and (max-width:480px){.hide-on-desktop{display:block}.hide-on-mobile{display:none}}
+    @media screen and (max-width:480px){.hide-on-desktop{display:block}.hide-on-mobile{display:none}.email-shell{width:100%;max-width:100%}.email-image-frame{max-width:100%}}
   </style>
   <script async custom-element="amp-form" src="https://cdn.ampproject.org/v0/amp-form-0.1.js"></script>
   <script async custom-element="amp-bind" src="https://cdn.ampproject.org/v0/amp-bind-0.1.js"></script>
@@ -71,18 +75,18 @@ const ampTemplate = (trackingId, subject, campaignName, campaignType) => {
 </head>
 <body style="word-spacing:normal;background-color:#f8fafc">
   <div class="body-wrapper disable-heading-font-weight">
-    <div style="background:#fff;margin:0 auto;width:100%;max-width:none">
-      <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;background-color:#fff">
+    <div class="email-shell" style="background:#fff;margin:0 auto;width:${emailShellWidth}px;max-width:100%">
+      <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" width="${emailShellWidth}" style="width:100%;max-width:${emailShellWidth}px;background-color:#fff">
         <tbody>
           <tr>
             <td style="padding:0;text-align:center">
-              <div class="mj-column-per-100" style="font-size:0;text-align:left;display:inline-block;vertical-align:top;width:100%">
+              <div class="mj-column-per-100 email-image-frame" style="font-size:0;text-align:left;display:inline-block;vertical-align:top;width:100%;max-width:${emailShellWidth}px">
                 <table border="0" cellpadding="0" cellspacing="0" role="presentation" width="100%">
                   <tbody>
                     <tr>
                       <td style="padding:0">
                         <a href="https://tn.btrkr.com/clicks/amp/..." target="_blank">
-                          <amp-img alt="Image" src="https://img.mmdocdn.com/mailmodo/image/upload/ar_946:1600,c_crop/v1756704504/editor/p/62dc8626-eafe-4c68-a935-861517fb9628/b20f300699305eadf65f9988cb020bb2_cd9fdw.jpg" width="600" height="850" layout="responsive"></amp-img>
+                          <amp-img alt="Image" src="https://img.mmdocdn.com/mailmodo/image/upload/ar_946:1600,c_crop/v1756704504/editor/p/62dc8626-eafe-4c68-a935-861517fb9628/b20f300699305eadf65f9988cb020bb2_cd9fdw.jpg" width="${emailShellWidth}" height="${imageHeight}" layout="responsive"></amp-img>
                         </a>
                       </td>
                     </tr>

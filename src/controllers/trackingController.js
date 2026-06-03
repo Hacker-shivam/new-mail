@@ -279,8 +279,6 @@ export const ampFormTracking = async (req, res) => {
   try {
     const trackingId = req.params.id;
 
-    const identity = await resolveTrackingIdentity(trackingId);
-
     const body = parseSubmittedBody(req.body);
 
     const {
@@ -291,6 +289,17 @@ export const ampFormTracking = async (req, res) => {
       templateSlug,
       formData
     } = splitTrackingFields(body);
+
+    let identity = {};
+
+    try {
+      identity = await resolveTrackingIdentity(trackingId);
+    } catch (identityErr) {
+      console.error("AMP FORM IDENTITY LOOKUP FAILED:", identityErr);
+      identity = {
+        email: decodeLegacyTrackingId(trackingId)
+      };
+    }
 
     const context = mergeTrackingContext(
       identity,
@@ -311,69 +320,79 @@ export const ampFormTracking = async (req, res) => {
     });
 
 
+    let tracked = true;
+
+    try {
      // CLICK TRACKING
-    await Tracking.create({
+      await Tracking.create({
 
-      trackingId,
+        trackingId,
 
-      email: context.email,
+        email: context.email,
 
-      ...context,
+        ...context,
 
-      emailType: "amp",
+        emailType: "amp",
 
-      eventType: "click",
+        eventType: "click",
 
-      clickedAt: new Date(),
+        clickedAt: new Date(),
 
-      render: getRenderData(req),
+        render: getRenderData(req),
 
-      clickedUrl: "AMP Submit Button",
+        clickedUrl: "AMP Submit Button",
 
-      clickedDomain: "AMP Submit Button",
+        clickedDomain: "AMP Submit Button",
 
-      ...botSignal,
+        ...botSignal,
 
-      createdAt: new Date()
+        createdAt: new Date()
 
-    });
+      });
 
-    await Tracking.create({
+      await Tracking.create({
 
-    trackingId,
+        trackingId,
 
-    email: context.email,
+        email: context.email,
 
-    ...context,
+        ...context,
 
-    emailType: "amp",
+        emailType: "amp",
 
-    eventType: "form_submit",
+        eventType: "form_submit",
 
-    formSubmitAt: new Date(),
+        formSubmitAt: new Date(),
 
-    render: getRenderData(req),
+        render: getRenderData(req),
 
-    ...botSignal,
+        ...botSignal,
 
-    formSubmission: formData,
+        formSubmission: formData,
 
-    createdAt: new Date()
+        createdAt: new Date()
 
-  });
+      });
 
-    await syncContactActivity(context.email);
+      await syncContactActivity(context.email);
+    } catch (trackingErr) {
+      tracked = false;
+      console.error("AMP FORM TRACKING SAVE FAILED:", trackingErr);
+    }
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       source: "AMP",
-      message: "AMP form submitted successfully"
+      tracked,
+      message: tracked
+        ? "AMP form submitted successfully"
+        : "AMP form received, but tracking persistence failed"
     });
 
   } catch (err) {
     console.error("AMP FORM ERROR:", err);
 
-    return res.status(500).json({
+    return res.status(200).json({
       success: false,
       source: "AMP",
       message: "Form submission failed"

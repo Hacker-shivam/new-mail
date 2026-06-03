@@ -1,12 +1,13 @@
 const corsMiddleware = (req, res, next) => {
 
-   const sourceOrigin = process.env.API_URL;
+   const requestOrigin = req.headers.origin;
+   const sourceOrigin = req.query.__amp_source_origin || process.env.API_URL || requestOrigin;
 
    /* ---------------- CORS ---------------- */
 
    res.setHeader(
       "Access-Control-Allow-Origin",
-      "*"
+      requestOrigin || "*"
    );
 
    res.setHeader(
@@ -30,6 +31,10 @@ const corsMiddleware = (req, res, next) => {
       "Access-Control-Expose-Headers",
       "AMP-Access-Control-Allow-Source-Origin"
    );
+
+   if (requestOrigin) {
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+   }
 
    
    res.setHeader("Cache-Control", "no-store");

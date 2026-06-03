@@ -52,6 +52,27 @@ const isAbsoluteUrl = (value = "") => {
   }
 };
 
+const isSafeImageUrl = (value = "") => {
+  if (!value) {
+    return true;
+  }
+
+  if (hasMustache(value)) {
+    return true;
+  }
+
+  if (String(value).startsWith("/template-assets/")) {
+    return true;
+  }
+
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+};
+
 const extractAttributes = (markup = "", attribute) => {
   const pattern = new RegExp(`${attribute}\\s*=\\s*(["'])(.*?)\\1`, "gi");
   return [...String(markup).matchAll(pattern)].map((match) => match[2]);
@@ -209,6 +230,42 @@ const validateSourceBlocks = (issues, sourceJson = {}) => {
   });
 };
 
+const validateSourceTheme = (issues, sourceJson = {}) => {
+  const theme = sourceJson?.theme;
+
+  if (!theme || typeof theme !== "object") {
+    return;
+  }
+
+  if (theme.backgroundImageUrl && !isSafeImageUrl(theme.backgroundImageUrl)) {
+    addIssue(
+      issues,
+      "warning",
+      "INVALID_THEME_BACKGROUND_IMAGE_URL",
+      "Theme backgroundImageUrl must be an http or https image URL",
+      { value: theme.backgroundImageUrl }
+    );
+  }
+
+  const enumChecks = [
+    ["backgroundImageSize", ["cover", "contain", "auto"]],
+    ["backgroundImagePosition", ["center", "top", "bottom", "left", "right"]],
+    ["backgroundImageRepeat", ["no-repeat", "repeat", "repeat-x", "repeat-y"]]
+  ];
+
+  enumChecks.forEach(([field, allowed]) => {
+    if (theme[field] && !allowed.includes(theme[field])) {
+      addIssue(
+        issues,
+        "warning",
+        "INVALID_THEME_BACKGROUND_OPTION",
+        `Theme ${field} has an unsupported value`,
+        { field, value: theme[field], allowed }
+      );
+    }
+  });
+};
+
 export const validateTemplate = ({
   subject,
   html,
@@ -249,6 +306,7 @@ export const validateTemplate = ({
   validateFormPage(issues, formHtml);
   validateMissingVariables(issues, variables, providedVariables);
   validateSourceBlocks(issues, sourceJson);
+  validateSourceTheme(issues, sourceJson);
 
   const errors = issues.filter((issue) => issue.severity === "error");
   const warnings = issues.filter((issue) => issue.severity === "warning");

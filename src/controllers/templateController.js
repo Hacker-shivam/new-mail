@@ -3,6 +3,7 @@ import SavedBlock from "../models/SavedBlock.js";
 import TemplateVersion from "../models/TemplateVersion.js";
 import {
   extractTemplateVariables,
+  normalizeStoredTemplateMarkup,
   renderTemplateExpressions
 } from "../utils/generateAmpTemplate.js";
 import {
@@ -112,6 +113,10 @@ const builderThemeFieldNames = [
   "bgImage",
   "bgImageUrl",
   "bgUrl",
+  "backgroundOverlayColor",
+  "backgroundImageSize",
+  "backgroundImagePosition",
+  "backgroundImageRepeat",
   "contentColor",
   "contentBackgroundImage",
   "contentBackgroundImageUrl",
@@ -245,6 +250,113 @@ const getPublicAssetUrl = (req, publicPath) => {
   return `${baseUrl.replace(/\/$/, "")}${publicPath}`;
 };
 
+const compileSourceFallback = (sourceJson, { name, subject } = {}) => {
+  if (!sourceJson) {
+    return null;
+  }
+
+  return compileTemplateSource({
+    ...sourceJson,
+    name: name || sourceJson.name,
+    subject: subject || sourceJson.subject
+  });
+};
+
+const normalizeTemplateOutput = ({
+  html,
+  amp,
+  sourceJson
+}) => normalizeStoredTemplateMarkup({
+  html,
+  amp,
+  template: {
+    sourceJson
+  }
+});
+
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const findTemplateByIdentifier = async (identifier) => {
+  if (!identifier) {
+    return null;
+  }
+
+  const value = String(identifier);
+
+  if (uuidPattern.test(value)) {
+    const template = await AmpTemplate.findById(value);
+
+    if (template) {
+      return template;
+    }
+  }
+
+  return AmpTemplate.findOne({
+    $or: [
+      { slug: value },
+      { mongoId: value }
+    ]
+  });
+};
+
+const getPreviewValues = (variables = {}) => ({
+  email: "preview@example.com",
+  firstName: "Preview",
+  formHtmlUrl: "#",
+  formAmpUrl: "#",
+  formActionUrl: "#",
+  directFormHtmlUrl: "#",
+  unsubscribeUrl: "#",
+  preheader: "",
+  ...variables
+});
+
+const compilePreviewTemplate = ({
+  sourceJson,
+  subject,
+  html,
+  amp,
+  formHtml,
+  text,
+  variables
+}) => {
+  if (sourceJson) {
+    return compileTemplateSource(sourceJson);
+  }
+
+  return {
+    subject,
+    html,
+    amp,
+    formHtml,
+    text,
+    variables: variables || extractTemplateVariables(html, amp, formHtml, subject)
+  };
+};
+
+const renderPreviewTemplate = ({ compiled, sourceJson, variables = {} }) => {
+  const previewValues = getPreviewValues(variables);
+  const validation = getValidationPayload({
+    subject: sourceJson?.subject || compiled.subject,
+    html: compiled.html,
+    amp: compiled.amp,
+    formHtml: compiled.formHtml,
+    variables: compiled.variables,
+    sourceJson,
+    providedVariables: variables
+  });
+
+  return {
+    validation,
+    rendered: {
+      html: renderTemplateExpressions(compiled.html, previewValues),
+      amp: renderTemplateExpressions(compiled.amp, previewValues),
+      formHtml: renderTemplateExpressions(compiled.formHtml, previewValues),
+      text: renderTemplateExpressions(compiled.text, previewValues)
+    }
+  };
+};
+
 export const uploadTemplateAsset = async (req, res) => {
   try {
     const {
@@ -314,6 +426,7 @@ export const createTemplate = async (req, res) => {
       amp,
       formHtml,
       text,
+      variables,
       theme,
       blocks,
       formTitle,
@@ -331,19 +444,26 @@ export const createTemplate = async (req, res) => {
       });
     }
 
-    const compiled = builderSourceJson
-      ? compileTemplateSource({
-          ...builderSourceJson,
-          name,
-          subject: subject || builderSourceJson.subject
-        })
-      : null;
+    const compiled = compileSourceFallback(builderSourceJson, {
+      name,
+      subject: subject || builderSourceJson?.subject
+    });
+    const normalizedOutput = normalizeTemplateOutput({
+      html: html || compiled?.html,
+      amp: amp || compiled?.amp,
+      sourceJson: builderSourceJson
+    });
+    const outputHtml = normalizedOutput.html;
+    const outputAmp = normalizedOutput.amp;
+    const outputFormHtml = formHtml || compiled?.formHtml;
+    const outputText = text || compiled?.text;
+    const outputVariables = variables || compiled?.variables || extractTemplateVariables(outputHtml, outputAmp, outputFormHtml, subject);
     const validation = getValidationPayload({
       subject: subject || builderSourceJson?.subject,
-      html: compiled?.html || html,
-      amp: compiled?.amp || amp,
-      formHtml: compiled?.formHtml || formHtml,
-      variables: compiled?.variables || extractTemplateVariables(html, amp, formHtml, subject),
+      html: outputHtml,
+      amp: outputAmp,
+      formHtml: outputFormHtml,
+      variables: outputVariables,
       sourceJson: builderSourceJson
     });
 
@@ -352,10 +472,10 @@ export const createTemplate = async (req, res) => {
       slug: slug || createSlug(name),
       subject: subject || builderSourceJson?.subject,
       sourceJson: builderSourceJson,
-      html: compiled?.html || html,
-      amp: compiled?.amp || amp,
-      formHtml: compiled?.formHtml || formHtml,
-      text: compiled?.text || text,
+      html: outputHtml,
+      amp: outputAmp,
+      formHtml: outputFormHtml,
+      text: outputText,
       status,
       isActive,
       auditHistory: [
@@ -364,7 +484,7 @@ export const createTemplate = async (req, res) => {
           summary: builderSourceJson ? "Created from builder source" : "Created from raw markup"
         }
       ],
-      variables: compiled?.variables || extractTemplateVariables(html, amp, formHtml, subject)
+      variables: outputVariables
     });
 
     await snapshotTemplate(template, "Initial template version");
@@ -402,6 +522,9 @@ export const createTemplate = async (req, res) => {
 export const listTemplates = async (req, res) => {
   try {
     const query = {};
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const skip = (page - 1) * limit;
 
     if (req.query.search) {
       query.$or = [
@@ -417,12 +540,20 @@ export const listTemplates = async (req, res) => {
 
     const templates = await AmpTemplate
       .find(query)
-      .select("-html -amp -formHtml")
-      .sort({ createdAt: -1 });
+      .select("_id name slug subject status version variables isActive createdAt updatedAt")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
     return res.json({
       success: true,
-      templates
+      templates,
+      pagination: {
+        page,
+        limit,
+        count: templates.length,
+        hasMore: templates.length === limit
+      }
     });
   } catch (err) {
     console.error("LIST TEMPLATE ERROR:", err);
@@ -444,7 +575,7 @@ export const listTemplates = async (req, res) => {
 
 export const getTemplate = async (req, res) => {
   try {
-    const template = await AmpTemplate.findById(req.params.id);
+    const template = await findTemplateByIdentifier(req.params.id);
 
     if (!template) {
       return res.status(404).json({
@@ -463,6 +594,69 @@ export const getTemplate = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Template fetch failed"
+    });
+  }
+};
+
+export const getTemplatePreview = async (req, res) => {
+  try {
+    const template = await findTemplateByIdentifier(req.params.id);
+
+    if (!template) {
+      return res.status(404).json({
+        success: false,
+        message: "Template not found"
+      });
+    }
+
+    let variables = {};
+
+    if (typeof req.query.variables === "string") {
+      try {
+        variables = JSON.parse(req.query.variables);
+      } catch {
+        return res.status(400).json({
+          success: false,
+          message: "variables must be valid JSON"
+        });
+      }
+    }
+
+    const compiled = compilePreviewTemplate({
+      sourceJson: template.sourceJson,
+      subject: template.subject,
+      html: template.html,
+      amp: template.amp,
+      formHtml: template.formHtml,
+      text: template.text,
+      variables: template.variables
+    });
+    const preview = renderPreviewTemplate({
+      compiled,
+      sourceJson: template.sourceJson,
+      variables
+    });
+
+    return res.json({
+      success: true,
+      template: {
+        _id: template._id,
+        id: template.id,
+        name: template.name,
+        slug: template.slug,
+        subject: template.subject,
+        status: template.status,
+        version: template.version
+      },
+      compiled,
+      ...preview
+    });
+  } catch (err) {
+    console.error("GET TEMPLATE PREVIEW ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Template preview fetch failed"
     });
   }
 };
@@ -488,17 +682,16 @@ export const updateTemplate = async (req, res) => {
     keepTemplateFieldsOnly(update);
 
     if (update.sourceJson) {
-      const compiled = compileTemplateSource({
-        ...update.sourceJson,
+      const compiled = compileSourceFallback(update.sourceJson, {
         name: update.name || update.sourceJson.name,
         subject: update.subject || update.sourceJson.subject
       });
 
-      update.html = compiled.html;
-      update.amp = compiled.amp;
-      update.formHtml = compiled.formHtml;
-      update.text = compiled.text;
-      update.variables = compiled.variables;
+      update.html = update.html || compiled.html;
+      update.amp = update.amp || compiled.amp;
+      update.formHtml = update.formHtml || compiled.formHtml;
+      update.text = update.text || compiled.text;
+      update.variables = update.variables || compiled.variables;
     } else if (update.html || update.amp || update.formHtml || update.subject) {
       update.variables = extractTemplateVariables(
         update.html,
@@ -507,6 +700,23 @@ export const updateTemplate = async (req, res) => {
         update.subject
       );
     }
+
+    if (update.html || update.amp) {
+      const normalizedOutput = normalizeTemplateOutput({
+        html: update.html || existingTemplate.html,
+        amp: update.amp || existingTemplate.amp,
+        sourceJson: update.sourceJson || existingTemplate.sourceJson
+      });
+
+      if (update.html || update.sourceJson) {
+        update.html = normalizedOutput.html;
+      }
+
+      if (update.amp || update.sourceJson) {
+        update.amp = normalizedOutput.amp;
+      }
+    }
+
     const validation = getValidationPayload({
       subject: update.subject || existingTemplate.subject,
       html: update.html || existingTemplate.html,
@@ -927,6 +1137,10 @@ export const archiveSavedBlock = async (req, res) => {
 export const previewTemplate = async (req, res) => {
   try {
     const {
+      _id,
+      id,
+      templateId,
+      slug,
       sourceJson,
       subject,
       html,
@@ -935,56 +1149,42 @@ export const previewTemplate = async (req, res) => {
       text,
       variables = {}
     } = req.body;
+    const template = !sourceJson && !html
+      ? await findTemplateByIdentifier(templateId || id || _id || slug)
+      : null;
+    const previewSourceJson = sourceJson || template?.sourceJson;
+    const previewHtml = html || template?.html;
+    const previewAmp = amp || template?.amp;
+    const previewFormHtml = formHtml || template?.formHtml;
+    const previewText = text || template?.text;
+    const previewSubject = subject || template?.subject;
 
-    if (!sourceJson && !html) {
+    if (!previewSourceJson && !previewHtml) {
       return res.status(400).json({
         success: false,
-        message: "sourceJson or html is required"
+        message: "sourceJson, html, templateId, id or slug is required"
       });
     }
 
-    const compiled = sourceJson
-      ? compileTemplateSource(sourceJson)
-      : {
-          subject,
-          html,
-          amp,
-          formHtml,
-          text,
-          variables: extractTemplateVariables(html, amp, formHtml, subject)
-        };
-    const previewValues = {
-      email: "preview@example.com",
-      firstName: "Preview",
-      formHtmlUrl: "#",
-      formAmpUrl: "#",
-      formActionUrl: "#",
-      directFormHtmlUrl: "#",
-      unsubscribeUrl: "#",
-      preheader: "",
-      ...variables
-    };
-
-    const validation = getValidationPayload({
-      subject: sourceJson?.subject || subject,
-      html: compiled.html,
-      amp: compiled.amp,
-      formHtml: compiled.formHtml,
-      variables: compiled.variables,
-      sourceJson,
-      providedVariables: variables
+    const compiled = compilePreviewTemplate({
+      sourceJson: previewSourceJson,
+      subject: previewSubject,
+      html: previewHtml,
+      amp: previewAmp,
+      formHtml: previewFormHtml,
+      text: previewText,
+      variables: template?.variables
+    });
+    const preview = renderPreviewTemplate({
+      compiled,
+      sourceJson: previewSourceJson,
+      variables
     });
 
     return res.json({
       success: true,
       compiled,
-      validation,
-      rendered: {
-        html: renderTemplateExpressions(compiled.html, previewValues),
-        amp: renderTemplateExpressions(compiled.amp, previewValues),
-        formHtml: renderTemplateExpressions(compiled.formHtml, previewValues),
-        text: renderTemplateExpressions(compiled.text, previewValues)
-      }
+      ...preview
     });
   } catch (err) {
     console.error("PREVIEW TEMPLATE ERROR:", err);

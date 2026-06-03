@@ -23,6 +23,9 @@ const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS
   },
+  tls: {
+    servername: process.env.SMTP_HOST
+  },
   logger: process.env.SMTP_LOGGER === "true",
   debug: process.env.SMTP_DEBUG === "true"
 });
